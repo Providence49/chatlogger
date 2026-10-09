@@ -79,6 +79,9 @@
     font-family:"Segoe UI", Arial, sans-serif; font-weight:700; line-height:1.32; outline:none;
     box-shadow:0 6px 24px rgba(0,0,0,.6);
   }
+  .chips{ display:flex; flex-wrap:wrap; gap:5px; }
+  .chip{ padding:3px 9px; font-size:11.5px; border-radius:999px; }
+  .chip.on{ background:var(--accent); color:#0a0f16; border-color:var(--accent); font-weight:600; }
   .rzFrame{ position:absolute; box-sizing:border-box; border:1px dashed rgba(255,255,255,.75); outline:1px solid rgba(0,0,0,.5); pointer-events:none; z-index:1; }
   .rzHandle{
     position:absolute; width:13px; height:13px; box-sizing:border-box; transform:translate(-50%,-50%); z-index:2;
@@ -136,6 +139,12 @@
         <label class="chk"><input type="checkbox" id="catSystem"><span class="swatch" style="background:#56D64B"></span>System / server</label>
         <label class="chk"><input type="checkbox" id="catHeader"><span class="swatch" style="background:#666"></span>Session header</label>
         <label class="chk"><input type="checkbox" id="showTimestamps"><span class="swatch" style="background:transparent"></span>Show timestamps</label>
+      </div>
+      <div style="margin-top:14px;">
+        <div class="hint" style="margin:0 0 5px; color:var(--text);">Only show these characters <span id="nameFilterStatus" style="color:var(--accent);"></span></div>
+        <textarea id="nameFilterInput" rows="2" spellcheck="false" placeholder="Jane Doe, John Smith  (leave empty to show everyone)" style="width:100%; resize:vertical; background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:7px 8px; font:12px/1.4 Consolas, monospace;"></textarea>
+        <div class="hint" style="margin:6px 0 4px;">Or click the names found in your log:</div>
+        <div id="nameChips" class="chips"></div>
       </div>
     </div>
 
@@ -281,17 +290,23 @@
       // Faction chat looks like OOC but has a rank before the name: (( (64) Patched Member John Smith: ... ))
       // Regular OOC is just "First Last", so 3+ words before the colon means a rank is present.
       const who = FACTION_RE.exec(test);
-      if (who && who[1].trim().split(/\s+/).length >= 3) return {time, content, category:"faction"};
-      return {time, content, category:"ooc"};
+      const pm = /^\(\(\s*PM (?:to|from)\s+\(\d+\)\s+([^:]+?)\s*:/i.exec(test);   // (( PM to (60) Name: ... ))
+      const words = who ? who[1].trim().split(/\s+/) : [];
+      // the speaker is the last two words (the name); anything before them is a faction rank
+      const oocSpeaker = pm ? pm[1].trim() : (who ? words.slice(-2).join(" ") : undefined);
+      if (who && words.length >= 3) return {time, content, category:"faction", speaker: oocSpeaker};
+      return {time, content, category:"ooc", speaker: oocSpeaker};
     }
 
+    // Emotes have no clean "speaker" field — keep their text so the character filter can find the actor's name in it.
     const act = ACTION_RE.exec(test);
-    if (act) return {time, content, category:"action"};
+    if (act) return {time, content, category:"action", actionBody: act[1]};
 
-    if (NARRATE_RE.test(test)) return {time, content, category:"action"};
+    const narr = NARRATE_RE.exec(test);
+    if (narr) return {time, content, category:"action", actionBody: narr[1]};
 
     const mic = MIC_RE.exec(test);
-    if (mic) return {time, content, category:"perform"};
+    if (mic) return {time, content, category:"perform", speaker: mic[1].trim()};
 
     const sp = SPEECH_RE.exec(test);
     if (sp){
@@ -346,7 +361,7 @@
   ["logInput","fileInput","rangeStart","rangeEnd","fullRangeBtn","rangeInfo",
    "catAction","catSay","catLow","catFaction","catPhone","catWhisper","catPerform","catOoc","catSystem","catHeader","showTimestamps",
    "widthInput","fontSize","fontFamily","outlineWidth","lineSpacing","bgColor","bgOpacity","bgOpacityVal","bgTransparentBtn","bgSolidBtn","highlightMoney","dedupeLines","censorMarker","myCharacter","ownLightness",
-   "visibleCount","copyBtn","copyStatus","overlayFit","downloadBtn","previewWrap","splitInfo"
+   "visibleCount","copyBtn","copyStatus","overlayFit","nameFilterInput","nameFilterStatus","nameChips","downloadBtn","previewWrap","splitInfo"
   ].forEach(id => els[id] = document.getElementById(id));
   let canvases = []; // one canvas per exported image (long logs are split)
   let overlay = null;          // uploaded screenshot: {el, w, h, name, url} — chat is drawn on top of it
@@ -367,10 +382,61 @@
     return cb ? cb.checked : false;
   }
 
+  // ---------- "Only show these characters" filter ----------
+  let nameFilter = [];   // lowercase names typed into the filter box; empty = show everyone
+  function parseNameFilter(){
+    nameFilter = els.nameFilterInput.value.split(/[,;\n]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+    els.nameFilterStatus.textContent = nameFilter.length
+      ? `— showing only ${nameFilter.length} character${nameFilter.length > 1 ? "s" : ""}` : "";
+  }
+  function passesNameFilter(line){
+    if (!nameFilter.length) return true;
+    const cat = line.category;
+    if (cat === "system" || cat === "header") return true;   // not chat from a character: only their own checkboxes decide
+    if (cat === "action"){
+      const body = (line.actionBody || "").toLowerCase();
+      const tag = /\(\(\s*([^()]+?)\s*\)\)\*?\s*$/.exec(body);                  // "... (( Name ))*" says who wrote the emote
+      if (tag && nameFilter.includes(tag[1].trim())) return true;
+      return nameFilter.some(n => body.startsWith(n) && !/[a-z0-9]/.test(body.charAt(n.length)));   // "* Name does something"
+    }
+    return !!line.speaker && nameFilter.includes(line.speaker.toLowerCase());
+  }
+  // One clickable chip per character found in the loaded log, most talkative first.
+  function buildNameChips(){
+    const counts = new Map();
+    for (const l of allLines){
+      if (!l.speaker) continue;
+      const k = l.speaker.toLowerCase();
+      const c = counts.get(k) || {name: l.speaker, n: 0};
+      c.n++; counts.set(k, c);
+    }
+    els.nameChips.innerHTML = "";
+    for (const c of [...counts.values()].sort((a, b) => b.n - a.n).slice(0, 16)){
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "chip"; b.dataset.name = c.name;
+      b.textContent = `${c.name} (${c.n})`;
+      b.title = "Click to add or remove this character from the filter";
+      b.addEventListener("click", () => toggleName(c.name));
+      els.nameChips.appendChild(b);
+    }
+    markChips();
+  }
+  function markChips(){
+    for (const b of els.nameChips.children) b.classList.toggle("on", nameFilter.includes(b.dataset.name.toLowerCase()));
+  }
+  function toggleName(name){
+    const cur = els.nameFilterInput.value.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+    const i = cur.findIndex(n => n.toLowerCase() === name.toLowerCase());
+    if (i >= 0) cur.splice(i, 1); else cur.push(name);
+    els.nameFilterInput.value = cur.join(", ");
+    els.nameFilterInput.dispatchEvent(new Event("input", {bubbles: true}));
+  }
+  els.nameFilterInput.addEventListener("input", () => { parseNameFilter(); markChips(); updateCounts(); render(); });
+
   function isVisible(line){
     if (hiddenIdx.has(line.idx)) return false;
     if (shownIdx.has(line.idx)) return true;
-    return categoryOn(line.category);
+    return categoryOn(line.category) && passesNameFilter(line);
   }
 
   // ---------- Loading text ----------
@@ -384,6 +450,7 @@
     els.rangeEnd.value = allLines.length || 1;
     els.rangeStart.max = allLines.length || 1;
     els.rangeEnd.max = allLines.length || 1;
+    buildNameChips();
     updateCounts();
     render();
   }
@@ -1211,7 +1278,7 @@
   // Everything except the chatlog text itself (and edits) is remembered between visits.
   const SETTINGS_KEY = "providenceChatloggerSettings.v1";
   const SETTING_IDS = ["widthInput","fontSize","fontFamily","outlineWidth","lineSpacing","bgColor","bgOpacity",
-    "highlightMoney","dedupeLines","censorMarker","myCharacter","showTimestamps",
+    "highlightMoney","dedupeLines","censorMarker","myCharacter","nameFilterInput","showTimestamps",
     "catAction","catSay","catLow","catFaction","catPhone","catWhisper","catPerform","catOoc","catSystem","catHeader"];
   function snapshotSettings(){
     const o = {};
@@ -1236,6 +1303,7 @@
   els.resetSettingsBtn.addEventListener("click", () => {
     applySettings(DEFAULT_SETTINGS);
     try { localStorage.removeItem(SETTINGS_KEY); } catch (err) {}
+    parseNameFilter(); markChips();
     updateCounts();
     render();
   });
@@ -1244,6 +1312,7 @@
     if (saved) applySettings(JSON.parse(saved));
   } catch (err) { /* ignore corrupt/blocked storage */ }
   syncRanges();
+  parseNameFilter();
 
   // ---------- Init ----------
   render();

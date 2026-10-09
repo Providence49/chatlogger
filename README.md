@@ -107,6 +107,17 @@ Also:
 - **Show timestamps** adds the `[23:55:26]` time in front of each line.
 - Dollar amounts (like `$300`) in **system messages** are shown in blue. You can turn that off in the Style section.
 
+### Only show certain characters
+
+Under the tick-boxes there is a box called **Only show these characters**. Use it when your log has lots of people but you only want a few of them in the picture.
+
+- **Easiest way:** below the box you will see a button for every character found in your log, with how many lines they have (for example `Jane Doe (23)`). **Click a name** to add them. Click again to remove them. You can pick as many as you like.
+- **Or type the names** into the box, separated by commas: `Jane Doe, John Smith`. Capital letters don't matter, but use the character's **full name** exactly as it appears in the chat.
+- Everything said or done by anyone else disappears: their says, whispers, phone lines, emotes, OOC and faction chat.
+- Server/system lines aren't "said" by a character, so they are not affected by this box. The tick-boxes above decide whether they show.
+- An emote is matched to a character when it starts with their name (`* Jane Doe waves.`) or ends with their name in brackets (`... (( Jane Doe ))*`). Emotes that don't name anyone (like `* A door slams.`) are hidden while the filter is on.
+- **Leave the box empty to show everyone.** If you can't see anything after typing names, check the spelling, or empty the box.
+
 ---
 
 ## 4. Fixing and styling lines directly on the picture
@@ -251,7 +262,10 @@ Open the file in Chrome, Edge or Brave (right-click the file → *Open with*).
 No lines match. Check that your chat is pasted in, that the **From / To** line range covers some lines (click **Full log**), and that the right kinds of lines are ticked under *What to include*.
 
 **Lines I expected are missing.**
-Server/system lines, OOC and faction chat are hidden by default. Tick them under *What to include* if you want them. Also check the line range.
+Server/system lines, OOC and faction chat are hidden by default. Tick them under *What to include* if you want them. Also check the line range, and check that the **Only show these characters** box is empty (or contains the right names).
+
+**I typed a name and now everything is gone.**
+The name has to match the character's full name exactly as it appears in the chat (capital letters don't matter). The easiest fix is to empty the box and click the name buttons underneath instead.
 
 **The same line shows twice.**
 Make sure *Drop exact duplicate consecutive lines* is ticked.
