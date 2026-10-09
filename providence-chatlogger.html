@@ -1204,7 +1204,6 @@
 
   // Everything except the chatlog text itself (and edits) is remembered between visits.
   const SETTINGS_KEY = "providenceChatloggerSettings.v1";
-  const LEGACY_SETTINGS_KEY = "chatlogMagicianSettings.v1"; // pre-rename key; migrated on first load so nobody loses their settings
   const SETTING_IDS = ["widthInput","fontSize","fontFamily","outlineWidth","lineSpacing","bgColor","bgOpacity",
     "highlightMoney","dedupeLines","censorMarker","myCharacter","showTimestamps",
     "catAction","catSay","catLow","catFaction","catPhone","catWhisper","catPerform","catOoc","catSystem","catHeader"];
@@ -1235,11 +1234,7 @@
     render();
   });
   try {
-    let saved = localStorage.getItem(SETTINGS_KEY);
-    if (!saved){
-      saved = localStorage.getItem(LEGACY_SETTINGS_KEY);           // carry settings over from the old name
-      if (saved){ localStorage.setItem(SETTINGS_KEY, saved); localStorage.removeItem(LEGACY_SETTINGS_KEY); }
-    }
+    const saved = localStorage.getItem(SETTINGS_KEY);
     if (saved) applySettings(JSON.parse(saved));
   } catch (err) { /* ignore corrupt/blocked storage */ }
   syncRanges();
