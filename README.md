@@ -276,6 +276,18 @@ Click **Reset settings** at the top of the left menu.
 
 ---
 
+## Free for everyone
+
+This tool is **free, and everyone is welcome to use it, change it, copy it, share it, and build on it however they like**, including for anything commercial. You don't need to ask permission and you don't need to give credit.
+
+- Want to change how it looks or add a feature? Go ahead. The whole tool is the one file, `providence-chatlogger.html`, and you can open it in any text editor.
+- Want to share it with your friends or your community? Please do.
+- Want to make your own version and put it online under your own name? Also fine.
+
+It is released into the public domain under the [Unlicense](LICENSE), which basically means "no strings attached". It comes with no promises or warranty, so use it at your own risk.
+
+---
+
 ## Privacy
 
 This tool runs entirely in your browser. It does not connect to the internet, send your chat anywhere, or collect anything about you. You can disconnect from the internet and it works the same.
