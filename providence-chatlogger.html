@@ -1,0 +1,1252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Providence Chatlogger</title>
+<style>
+  :root{
+    --bg:#15161a; --panel:#1c1e24; --panel2:#22242c; --border:#33363f;
+    --text:#e7e8ec; --muted:#9598a3; --accent:#6cb6ff;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.4 "Segoe UI", Arial, sans-serif;
+  }
+  /* The window never scrolls: the left menu stays put, and only the preview pane scrolls. */
+  .app{
+    display:grid; grid-template-columns: 420px 1fr; grid-template-rows: minmax(0, 1fr); height:100vh; overflow:hidden;
+  }
+  .left{
+    background:var(--panel); border-right:1px solid var(--border);
+    display:flex; flex-direction:column; min-width:0; min-height:0; overflow-y:auto;
+  }
+  .left h1{ font-size:15px; margin:0; padding:12px 14px; border-bottom:1px solid var(--border); }
+  .left h1 span{ color:var(--muted); font-weight:400; }
+  .section{ padding:12px 14px; border-bottom:1px solid var(--border); }
+  .section h2{ font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 8px; }
+  textarea#logInput{
+    width:100%; height:110px; resize:vertical; background:var(--panel2); color:var(--text);
+    border:1px solid var(--border); border-radius:6px; padding:8px; font:12px/1.4 Consolas, monospace;
+  }
+  input[type=file]{ font-size:12px; margin-top:6px; color:var(--muted); }
+  .slider{ display:grid; grid-template-columns: 84px 1fr 62px; gap:8px; align-items:center; margin-bottom:6px; font-size:12.5px; }
+  .slider input[type=range]{ width:100%; margin:0; cursor:pointer; accent-color:var(--accent); }
+  .slider input[type=number]{ width:62px; }
+  input[type=range]{ accent-color:var(--accent); }
+  .row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .catgrid{ display:grid; grid-template-columns: 1fr 1fr; gap:6px 12px; }
+  label.chk{ display:flex; align-items:center; gap:6px; font-size:12.5px; cursor:pointer; }
+  label.chk .swatch{ width:10px; height:10px; border-radius:2px; display:inline-block; flex:none; }
+  .range input{ width:70px; background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:4px 6px; }
+  .num input{ width:70px; }
+  select, input[type=number], input[type=text]{
+    background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:5px 7px; font-size:12.5px;
+  }
+  .right{ display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .toolbar{
+    display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--border);
+    background:var(--panel);
+  }
+  .toolbar .spacer{ flex:1; }
+  button{
+    background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:6px;
+    padding:7px 12px; font-size:12.5px; cursor:pointer;
+  }
+  button.primary{ background:var(--accent); color:#0a0f16; border-color:var(--accent); font-weight:600; }
+  button:hover{ filter:brightness(1.1); }
+  .stage{
+    flex:1; overflow:auto; display:flex; align-items:flex-start; justify-content:center; padding:24px;
+    background:
+      linear-gradient(45deg, #23252b 25%, transparent 25%),
+      linear-gradient(-45deg, #23252b 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #23252b 75%),
+      linear-gradient(-45deg, transparent 75%, #23252b 75%);
+    background-size:20px 20px; background-position:0 0,0 10px,10px -10px,-10px 0px; background-color:#1a1b20;
+  }
+  .cwrap{ position:relative; margin-bottom:14px; max-width:100%; }
+  #previewWrap canvas{ display:block; cursor:text; height:auto; box-shadow:0 4px 24px rgba(0,0,0,.4); max-width:100%; }
+  .inlineEdit{
+    position:absolute; left:0; right:0; box-sizing:border-box; resize:none; overflow:hidden; z-index:2;
+    padding:4px 10px; background:#0b0c10; color:#fff; border:2px solid var(--accent); border-radius:6px;
+    font-family:"Segoe UI", Arial, sans-serif; font-weight:700; line-height:1.32; outline:none;
+    box-shadow:0 6px 24px rgba(0,0,0,.6);
+  }
+  .rzFrame{ position:absolute; box-sizing:border-box; border:1px dashed rgba(255,255,255,.75); outline:1px solid rgba(0,0,0,.5); pointer-events:none; z-index:1; }
+  .rzHandle{
+    position:absolute; width:13px; height:13px; box-sizing:border-box; transform:translate(-50%,-50%); z-index:2;
+    background:var(--accent); border:2px solid #fff; border-radius:3px; box-shadow:0 1px 4px rgba(0,0,0,.6);
+  }
+  .editBar{
+    position:absolute; left:0; z-index:3; display:flex; align-items:center; gap:6px; padding:4px 6px;
+    background:#16181f; border:1px solid var(--accent); border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.55);
+  }
+  .editBar button{ padding:4px 9px; font-size:12px; }
+  .editBar button:disabled{ opacity:.4; cursor:not-allowed; }
+  .editBar > span{ color:var(--muted); font-size:11.5px; margin-left:4px; }
+  .editBar .swatchRow{ display:flex; align-items:center; gap:4px; margin-left:6px; padding-left:8px; border-left:1px solid var(--border); }
+  .editBar .sw{ width:17px; height:17px; padding:0; border-radius:50%; border:1px solid rgba(255,255,255,.35); }
+  .editBar .swCustom{ width:24px; height:20px; padding:0; border:1px solid var(--border); border-radius:4px; background:none; cursor:pointer; }
+  .editBar .swatchRow button:not(.sw){ padding:2px 7px; font-size:11px; }
+  .hint{ color:var(--muted); font-size:11.5px; margin-top:4px; }
+  .catcount{ color:var(--muted); font-weight:400; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="left">
+    <h1 style="display:flex; align-items:center; gap:8px;">Providence Chatlogger
+      <button id="resetSettingsBtn" type="button" title="Put every setting back to its default" style="margin-left:auto; font-size:11.5px; padding:4px 9px;">Reset settings</button>
+    </h1>
+
+    <div class="section">
+      <h2>1. Load a chatlog</h2>
+      <textarea id="logInput" placeholder="Paste a chatlog here…"></textarea>
+      <input type="file" id="fileInput" accept=".txt" multiple>
+      <div class="hint">Or drop one or more .txt files onto this page.</div>
+    </div>
+
+    <div class="section">
+      <h2>2. Line range <span class="hint" id="rangeInfo"></span></h2>
+      <div class="row range">
+        <label>From <input type="number" id="rangeStart" min="1" value="1"></label>
+        <label>To <input type="number" id="rangeEnd" min="1" value="1"></label>
+        <button id="fullRangeBtn">Full log</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>3. What to include <span class="catcount" id="visibleCount"></span></h2>
+      <div class="catgrid">
+        <label class="chk"><input type="checkbox" id="catAction" checked><span class="swatch" style="background:#C2A3DA"></span>Emotes (* …)</label>
+        <label class="chk"><input type="checkbox" id="catSay" checked><span class="swatch" style="background:#F1F1F1"></span>Says / shouts</label>
+        <label class="chk"><input type="checkbox" id="catLow" checked><span class="swatch" style="background:#C6C4C4"></span>Low / lower</label>
+        <label class="chk"><input type="checkbox" id="catWhisper" checked><span class="swatch" style="background:#EDA841"></span>Whispers</label>
+        <label class="chk"><input type="checkbox" id="catPhone" checked><span class="swatch" style="background:#FBF724"></span>Phone / radio / car</label>
+        <label class="chk"><input type="checkbox" id="catPerform" checked><span class="swatch" style="background:#FBF724"></span>Performance [Mic]</label>
+        <label class="chk"><input type="checkbox" id="catFaction"><span class="swatch" style="background:#2F9E4B"></span>Faction chat</label>
+        <label class="chk"><input type="checkbox" id="catOoc"><span class="swatch" style="background:#8a8d97"></span>OOC (( ))</label>
+        <label class="chk"><input type="checkbox" id="catSystem"><span class="swatch" style="background:#56D64B"></span>System / server</label>
+        <label class="chk"><input type="checkbox" id="catHeader"><span class="swatch" style="background:#666"></span>Session header</label>
+        <label class="chk"><input type="checkbox" id="showTimestamps"><span class="swatch" style="background:transparent"></span>Show timestamps</label>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>4. Your character</h2>
+      <div class="row">
+        <label style="flex:1; display:flex; align-items:center; gap:8px;">Name
+          <input type="text" id="myCharacter" placeholder="e.g. Jane Doe" spellcheck="false" style="flex:1; min-width:0;">
+        </label>
+      </div>
+      <div class="slider" style="margin-top:8px;"><span>Lighter by</span><input type="range" id="ownLightnessRange" min="0" max="60" step="1"><input type="number" id="ownLightness" value="28" min="0" max="80" step="1"></div>
+      <div class="hint">Your own says / [low] / [lower] / shouts render lighter than everyone else's (plain says is already near-white, so it can only brighten a little). Your phone lines turn white (others stay yellow). Emotes and whispers are untouched.</div>
+    </div>
+
+    <div class="section">
+      <h2>5. Style <span class="catcount" style="text-transform:none; letter-spacing:0;">(settings save automatically)</span></h2>
+      <div class="slider"><span>Width</span><input type="range" id="widthRange" min="300" max="1600" step="10"><input type="number" id="widthInput" value="880" min="300" step="10"></div>
+      <div class="slider"><span>Font size</span><input type="range" id="fontSizeRange" min="8" max="40" step="1"><input type="number" id="fontSize" value="15" min="8" step="1"></div>
+      <div class="slider"><span>Outline</span><input type="range" id="outlineWidthRange" min="0" max="12" step="0.5"><input type="number" id="outlineWidth" value="3" min="0" max="12" step="0.5"></div>
+      <div class="slider"><span>Line spacing</span><input type="range" id="lineSpacingRange" min="0.8" max="2.5" step="0.05"><input type="number" id="lineSpacing" value="1.32" min="0.8" max="3" step="0.05"></div>
+      <div class="row" style="margin-top:4px;">
+        <label>Font
+          <select id="fontFamily">
+            <option value='Arial, Helvetica, sans-serif' selected>Arial</option>
+            <option value='"Segoe UI", Arial, sans-serif'>Segoe UI</option>
+            <option value='Verdana, Geneva, sans-serif'>Verdana</option>
+            <option value='Tahoma, Geneva, sans-serif'>Tahoma</option>
+            <option value='"Trebuchet MS", Arial, sans-serif'>Trebuchet MS</option>
+            <option value='Calibri, "Segoe UI", sans-serif'>Calibri</option>
+            <option value='Georgia, "Times New Roman", serif'>Georgia</option>
+            <option value='"Times New Roman", Times, serif'>Times New Roman</option>
+            <option value='Consolas, "Lucida Console", monospace'>Consolas (mono)</option>
+            <option value='"Lucida Console", Consolas, monospace'>Lucida Console (mono)</option>
+            <option value='"Courier New", Courier, monospace'>Courier New (mono)</option>
+            <option value='Impact, "Arial Black", sans-serif'>Impact</option>
+          </select>
+        </label>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <div style="width:100%;">
+          <div class="row">
+            <label>Background <input type="color" id="bgColor" value="#0a0a0c" style="width:42px; height:28px; padding:0; border:1px solid var(--border); border-radius:4px; background:none; cursor:pointer;"></label>
+            <button id="bgTransparentBtn" type="button">Transparent</button>
+            <button id="bgSolidBtn" type="button">Solid</button>
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <label style="flex:1; display:flex; align-items:center; gap:8px;">Opacity
+              <input type="range" id="bgOpacity" min="0" max="100" value="72" style="flex:1;">
+              <span id="bgOpacityVal" style="width:36px; text-align:right; color:var(--muted);">72%</span>
+            </label>
+          </div>
+        </div>
+        <label class="chk"><input type="checkbox" id="highlightMoney" checked>Highlight $ amounts in system messages</label>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <label class="chk"><input type="checkbox" id="dedupeLines" checked>Drop exact duplicate consecutive lines</label>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>6. Screenshot overlay</h2>
+      <input type="file" id="screenshotInput" accept="image/*" style="margin-top:0;">
+      <div id="overlayControls" style="display:none; margin-top:10px;">
+        <div class="row" style="justify-content:space-between;">
+          <span id="overlayName" class="hint" style="margin:0; word-break:break-all;"></span>
+          <button id="overlayRemoveBtn" type="button">Remove screenshot</button>
+        </div>
+        <div class="slider" style="margin-top:10px;"><span>Chat X</span><input type="range" id="overlayXRange" min="0" max="100" step="1" value="24"><input type="number" id="overlayX" value="24" min="0" step="1"></div>
+        <div class="slider"><span>Chat Y</span><input type="range" id="overlayYRange" min="0" max="100" step="1" value="24"><input type="number" id="overlayY" value="24" min="0" step="1"></div>
+        <div class="slider"><span>Box width</span><input type="range" id="overlayWRange" min="120" max="1920" step="1" value="880"><input type="number" id="overlayW" value="880" min="120" step="1"></div>
+        <div class="slider"><span>Box height</span><input type="range" id="overlayHRange" min="40" max="1080" step="1" value="100"><input type="number" id="overlayH" value="100" min="40" step="1"></div>
+        <label class="chk" style="margin:4px 0 2px;"><input type="checkbox" id="overlayFit" checked>Fit text to box (automatic text size)</label>
+        <div class="hint" id="overlayFontInfo" style="margin:0 0 10px;"></div>
+        <div class="row">
+          <button type="button" data-corner="tl">Top left</button>
+          <button type="button" data-corner="tr">Top right</button>
+          <button type="button" data-corner="bl">Bottom left</button>
+          <button type="button" data-corner="br">Bottom right</button>
+        </div>
+      </div>
+      <div class="hint">Upload a screenshot (or drop an image on the page) and the chat is drawn on top of it. The result is saved at the screenshot's full size. Drag the chat in the preview to move it. Tip: set the background opacity to 0 for plain text.</div>
+    </div>
+
+    <div class="section">
+      <h2>7. Black out text</h2>
+      <div class="row">
+        <label>Marker <input type="text" id="censorMarker" value="+" maxlength="4" style="width:48px; text-align:center;"></label>
+      </div>
+      <div class="hint">Wrap text with the marker right in the chatlog box, e.g. <code>+Jane Doe+</code> — everything between a pair of markers gets blacked out. The marker itself never shows up in the image.</div>
+    </div>
+
+  </div>
+
+  <div class="right">
+    <div class="toolbar">
+      <div class="spacer"></div>
+      <span id="copyStatus" style="font-size:12px; max-width:420px;"></span>
+      <button id="copyBtn">Copy image</button>
+      <button id="downloadBtn" class="primary">Download PNG</button>
+    </div>
+    <div class="stage">
+      <div style="min-width:0; max-width:100%;">
+        <div class="hint" id="splitInfo" style="margin:0 0 8px;"></div>
+        <div id="previewWrap"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Parsing ----------
+  // Strip a leading "[HH:MM:SS] " and return {time, rest}
+  const TIME_RE = /^\[(\d{1,2}:\d{2}:\d{2})\]\s?(.*)$/;
+  const HEADER_RE = /^\[DATE:.*\|.*TIME:.*\]$/i;
+  const OOC_RE = /^\(\(.*\)\)\*?$/;
+  const ACTION_RE = /^\*\s?(.*)$/;
+  const MIC_RE = /^([A-Za-z0-9'.\- ]+?)\s\[Microphone\]:\s*(.*)$/i;
+  const NARRATE_RE = /^>\s?(.*)$/;
+  const FACTION_RE = /^\(\(\s*\(\d+\)\s+([^:]+?)\s*:/;
+  // Name says[/whispers/shouts] [tag] [(phone|to X)]: message
+  const SPEECH_RE = /^([A-Za-z0-9'.\- ]+?)\s(says|shouts|whispers)((?:\s?\[[a-z]+\])*)((?:\s?\((?:phone|to [^)]+)\))*)\s*:\s*(.*)$/i;
+
+  function classify(rawLine){
+    const m = TIME_RE.exec(rawLine);
+    const time = m ? m[1] : "";
+    const content = m ? m[2] : rawLine;
+
+    if (content.trim() === "") return {time, content, category:"system"};
+    if (HEADER_RE.test(content)) return {time, content, category:"header"};
+
+    // Strip leading markers that don't change what a line IS, only how loud/where it was said:
+    // "[!] " = raised voice, "(Radio) "/"(Car) "/"(Phone) " = sent over that channel. Kept in the displayed text.
+    let test = content;
+    if (/^\[!\]\s*/.test(test)) test = test.replace(/^\[!\]\s*/, "");
+    let isComm = false; // radio, car-whisper, or phone context, from a leading tag
+    const commPrefix = /^\((?:Radio|Car|Phone)\)\s+/i.exec(test);
+    if (commPrefix){ isComm = true; test = test.replace(/^\((?:Radio|Car|Phone)\)\s+/i, ""); }
+
+    if (OOC_RE.test(test)){
+      // Faction chat looks like OOC but has a rank before the name: (( (64) Patched Member John Smith: ... ))
+      // Regular OOC is just "First Last", so 3+ words before the colon means a rank is present.
+      const who = FACTION_RE.exec(test);
+      if (who && who[1].trim().split(/\s+/).length >= 3) return {time, content, category:"faction"};
+      return {time, content, category:"ooc"};
+    }
+
+    const act = ACTION_RE.exec(test);
+    if (act) return {time, content, category:"action"};
+
+    if (NARRATE_RE.test(test)) return {time, content, category:"action"};
+
+    const mic = MIC_RE.exec(test);
+    if (mic) return {time, content, category:"perform"};
+
+    const sp = SPEECH_RE.exec(test);
+    if (sp){
+      const tags = (sp[3]||"") + (sp[4]||"");
+      const speaker = sp[1].trim(); // who said it — used for the "your character" rule
+      // Phone, radio dispatch, and in-car whispers all land in the same yellow bucket.
+      if (isComm || /\(phone\)/i.test(tags)) return {time, content, category:"phone", speaker};
+      if (/whispers/i.test(sp[2])) return {time, content, category:"whisper", speaker};
+      if (/\[lower\]/i.test(tags)) return {time, content, category:"lower", speaker};
+      if (/\[low\]/i.test(tags)) return {time, content, category:"low", speaker};
+      return {time, content, category:"say", speaker};
+    }
+
+    return {time, content, category:"system"};
+  }
+
+  function parseLog(text, dedupe){
+    const rawLines = text.split(/\r?\n/)
+      .map(l => l.replace(/^\d+\t/, "")) // strip "1\t" style line numbers if pasted from a viewer
+      .filter(l => l.trim() !== "");
+    const kept = [];
+    for (const l of rawLines){
+      if (dedupe && kept.length && kept[kept.length - 1] === l) continue;
+      kept.push(l);
+    }
+    return kept.map((l, i) => Object.assign({idx:i+1, raw:l}, classify(l)));
+  }
+
+  const COLORS = {
+    action:  "#C2A3DA",
+    say:     "#F1F1F1",
+    low:     "#C6C4C4",
+    lower:   "#A3A1A1", // [lower] — a step darker than [low]
+    faction: "#2F9E4B", // faction chat: OOC-style lines with a rank before the name
+    phone:   "#FBF724", // phone, microphone, and in-car "(car)" whispers all share this
+    whisper: "#EDA841",
+    perform: "#FBF724",
+    ooc:     "#8a8d97",
+    system:  "#56D64B",
+    header:  "#8f9aa8",
+  };
+  const lighten = (hex, amt) => "#" + [1, 3, 5].map(i => Math.min(255, parseInt(hex.slice(i, i + 2), 16) + amt).toString(16).padStart(2, "0")).join("").toUpperCase();
+  const HIGHLIGHT_COLOR = "#3896F3"; // "system highlight" — used for $ amounts etc.
+  const DIRECTED_COLOR = "#FF00C3"; // the "[!]" tag itself — text directed at / highlighted on your character
+
+  // ---------- State ----------
+  let allLines = [];       // full parsed log
+  let hiddenIdx = new Set(); // manual per-line overrides (hidden)
+  let shownIdx = new Set();  // manual per-line overrides (force shown even if category off)
+
+  const els = {};
+  ["logInput","fileInput","rangeStart","rangeEnd","fullRangeBtn","rangeInfo",
+   "catAction","catSay","catLow","catFaction","catPhone","catWhisper","catPerform","catOoc","catSystem","catHeader","showTimestamps",
+   "widthInput","fontSize","fontFamily","outlineWidth","lineSpacing","bgColor","bgOpacity","bgOpacityVal","bgTransparentBtn","bgSolidBtn","highlightMoney","dedupeLines","censorMarker","myCharacter","ownLightness",
+   "visibleCount","copyBtn","copyStatus","overlayFit","downloadBtn","previewWrap","splitInfo"
+  ].forEach(id => els[id] = document.getElementById(id));
+  let canvases = []; // one canvas per exported image (long logs are split)
+  let overlay = null;          // uploaded screenshot: {el, w, h, name, url} — chat is drawn on top of it
+  let overlayInfo = null;      // size of the screenshot and of the chat block, from the last render
+  let overlayBox = null;       // size of the chat box on the screenshot: {w, h} in screenshot pixels
+  const overlayPos = {x: 24, y: 24};
+  let drag = null, suppressClick = false;
+
+  const catCheckbox = {
+    action: els.catAction, say: els.catSay, low: els.catLow, lower: els.catLow, phone: els.catPhone,
+    faction: els.catFaction,
+    whisper: els.catWhisper, perform: els.catPerform,
+    ooc: els.catOoc, system: els.catSystem, header: els.catHeader
+  };
+
+  function categoryOn(cat){
+    const cb = catCheckbox[cat];
+    return cb ? cb.checked : false;
+  }
+
+  function isVisible(line){
+    if (hiddenIdx.has(line.idx)) return false;
+    if (shownIdx.has(line.idx)) return true;
+    return categoryOn(line.category);
+  }
+
+  // ---------- Loading text ----------
+  let lastRawText = "";
+  function loadText(text){
+    lastRawText = text;
+    allLines = parseLog(text, els.dedupeLines.checked);
+    hiddenIdx = new Set();
+    shownIdx = new Set();
+    els.rangeStart.value = 1;
+    els.rangeEnd.value = allLines.length || 1;
+    els.rangeStart.max = allLines.length || 1;
+    els.rangeEnd.max = allLines.length || 1;
+    updateCounts();
+    render();
+  }
+
+  els.logInput.addEventListener("input", () => loadText(els.logInput.value));
+  els.dedupeLines.addEventListener("change", () => loadText(lastRawText));
+
+  els.fileInput.addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const texts = await Promise.all(files.map(f => f.text()));
+    const combined = texts.join("\n");
+    els.logInput.value = combined;
+    loadText(combined);
+  });
+
+  document.body.addEventListener("dragover", e => { e.preventDefault(); });
+  document.body.addEventListener("drop", async e => {
+    e.preventDefault();
+    const img = Array.from(e.dataTransfer.files || []).find(f => f.type.startsWith("image/"));
+    if (img){ loadScreenshot(img); return; }                // an image dropped on the page becomes the overlay screenshot
+    const files = Array.from(e.dataTransfer.files || []).filter(f => f.name.endsWith(".txt"));
+    if (!files.length) return;
+    const texts = await Promise.all(files.map(f => f.text()));
+    const combined = texts.join("\n");
+    els.logInput.value = combined;
+    loadText(combined);
+  });
+
+  // ---------- Range ----------
+  els.fullRangeBtn.addEventListener("click", () => {
+    els.rangeStart.value = 1;
+    els.rangeEnd.value = allLines.length || 1;
+    updateCounts(); render();
+  });
+  [els.rangeStart, els.rangeEnd].forEach(el => el.addEventListener("change", () => { updateCounts(); render(); }));
+
+  function currentRange(){
+    let s = parseInt(els.rangeStart.value || "1", 10);
+    let e = parseInt(els.rangeEnd.value || String(allLines.length), 10);
+    if (isNaN(s)) s = 1;
+    if (isNaN(e)) e = allLines.length;
+    if (s < 1) s = 1;
+    if (e > allLines.length) e = allLines.length;
+    if (e < s) e = s;
+    return [s, e];
+  }
+
+  // ---------- Category + style listeners ----------
+  Object.values(catCheckbox).forEach(cb => cb.addEventListener("change", () => { updateCounts(); render(); }));
+  [els.showTimestamps, els.widthInput, els.fontSize, els.fontFamily, els.outlineWidth, els.lineSpacing, els.bgColor, els.bgOpacity, els.highlightMoney, els.censorMarker, els.myCharacter, els.ownLightness]
+    .forEach(el => el.addEventListener("input", render));
+  els.bgTransparentBtn.addEventListener("click", () => { els.bgOpacity.value = 0; render(); });
+  els.bgSolidBtn.addEventListener("click", () => { els.bgOpacity.value = 100; render(); });
+
+  // ---------- Counts shown in the sidebar ----------
+  function updateCounts(){
+    const [s, e] = currentRange();
+    els.rangeInfo.textContent = allLines.length ? `(${allLines.length} lines total)` : "";
+    let visCount = 0;
+    for (let i = s - 1; i < e; i++){
+      const line = allLines[i];
+      if (line && isVisible(line)) visCount++;
+    }
+    els.visibleCount.textContent = `(${visCount} lines will render)`;
+  }
+
+  // ---------- Rendering ----------
+  const MONEY_RE = /\$\d[\d,]*(?:\.\d+)?/g;
+
+  let FONT_FAMILY = 'Arial, Helvetica, sans-serif'; // set from the Font dropdown at the start of each render
+  const fontFor = (px, italic) => `${italic ? "italic " : ""}bold ${px}px ${FONT_FAMILY}`;
+
+  // Splits text on paired marker...marker runs. The markers themselves are dropped —
+  // only what's between a pair gets flagged as censored.
+  function splitByMarker(text, marker){
+    if (!marker) return [{text, censored:false, start:0}];
+    const esc = marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(esc + "([\\s\\S]*?)" + esc, "g");
+    const pieces = [];
+    let last = 0, m;
+    while ((m = re.exec(text))){
+      if (m.index > last) pieces.push({text: text.slice(last, m.index), censored:false, start:last}); // start = position in `text`
+      pieces.push({text: m[1], censored:true});
+      last = m.index + m[0].length;
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    if (last < text.length) pieces.push({text: text.slice(last), censored:false, start:last});
+    return pieces;
+  }
+
+  // Per-word colors are stored in the text as {#RRGGBB:colored words}. This removes the tags and
+  // returns the plain text plus, for every character of it, the color it should have (or null).
+  function stripColorTags(text){
+    const re = /\{(#[0-9a-fA-F]{6}):([^{}]*)\}/g;
+    let out = "", last = 0, m;
+    const colorAt = [];
+    while ((m = re.exec(text))){
+      const before = text.slice(last, m.index);
+      out += before; for (let i = 0; i < before.length; i++) colorAt.push(null);
+      out += m[2];   for (let i = 0; i < m[2].length; i++) colorAt.push(m[1]);
+      last = m.index + m[0].length;
+    }
+    const tail = text.slice(last);
+    out += tail; for (let i = 0; i < tail.length; i++) colorAt.push(null);
+    return {text: out, colorAt};
+  }
+
+  // Breaks a line into atoms: plain words, or a whole censored span kept as one atom
+  // (so it never splits across a line-wrap). A leading "[!]" tag (directed-at-you /
+  // highlighted) is pulled out as its own atom so it can be colored independently.
+  // With allowEmotes, *text* inside the line is colored as an emote and the asterisks are dropped.
+  // (Only when the asterisks pair up; an odd number is left as literal text.)
+  function tokenizeLine(text, marker, allowEmotes){
+    const atoms = [];
+    let rest = text;
+    const bang = /^\[!\]\s*/.exec(rest);
+    if (bang){
+      atoms.push({text: "[!]", forcedColor: DIRECTED_COLOR, censored:false});
+      rest = rest.slice(bang[0].length);
+    }
+    const stripped = stripColorTags(rest);
+    rest = stripped.text;
+    const colorAt = stripped.colorAt;
+    const pieces = splitByMarker(rest, marker);
+
+    // Flatten with a placeholder for each blacked-out span so *emote* and /italic/ can span across them.
+    const flat = pieces.map(p => p.censored ? "\u0001" : p.text).join("");
+    let toggleEmotes = false;
+    const slashDelims = new Set();
+    if (allowEmotes){
+      const stars = (flat.match(/\*/g) || []).length;
+      toggleEmotes = stars > 0 && stars % 2 === 0;
+      // /italic/: opening slash starts a word, closing slash ends one — so 9/11, and/or, urls and /commands are left alone.
+      const re = /(?<=^|[\s(\["'“*])\/(?=\S)([^\/]*?\S)\/(?=$|[\s.,!?;:)\]"'”*])/g;
+      let m;
+      while ((m = re.exec(flat))){ slashDelims.add(m.index); slashDelims.add(m.index + m[0].length - 1); }
+    }
+
+    // Break everything into runs: {text, emote, italic, censored}
+    const runs = [];
+    let emote = false, italic = false, off = 0, curColor = null;
+    for (const p of pieces){
+      if (p.censored){ runs.push({text: p.text, censored:true}); off += 1; continue; }
+      let buf = "";
+      const pushBuf = () => { if (buf){ runs.push({text: buf, emote, italic, color: curColor, censored:false}); buf = ""; } };
+      for (let i = 0; i < p.text.length; i++){
+        const ch = p.text[i];
+        const col = colorAt[p.start + i] || null;
+        if (col !== curColor){ pushBuf(); curColor = col; }
+        if (toggleEmotes && ch === "*"){ pushBuf(); emote = !emote; }
+        else if (ch === "/" && slashDelims.has(off + i)){ pushBuf(); italic = !italic; }
+        else buf += ch;
+      }
+      pushBuf();
+      off += p.text.length;
+    }
+
+    // Turn runs into word atoms. Pieces with no whitespace between them (e.g. "*smiles*.") stay in one atom.
+    let cur = [];
+    const flush = () => {
+      if (!cur.length) return;
+      const joined = cur.map(s => s.text).join("");
+      atoms.push(cur.some(s => s.emote || s.italic || s.color)
+        ? {text: joined, censored:false, segs: cur}
+        : {text: joined, censored:false});
+      cur = [];
+    };
+    for (const r of runs){
+      if (r.censored){
+        flush();
+        const trimmed = r.text.trim();
+        if (trimmed) atoms.push({text: trimmed, censored:true});
+        continue;
+      }
+      for (const tok of r.text.split(/(\s+)/)){
+        if (tok === "") continue;
+        if (/^\s+$/.test(tok)) flush();
+        else cur.push({text: tok, emote: r.emote, italic: r.italic, color: r.color});
+      }
+    }
+    flush();
+    return atoms;
+  }
+
+  function measureAtom(ctx, atom, fontSize){
+    if (atom.censored){
+      const padX = fontSize * 0.28;
+      const barW = Math.max(ctx.measureText(atom.text).width, fontSize * 0.9) + padX * 2;
+      atom._barW = barW;
+      return barW;
+    }
+    if (atom.segs){
+      let w = 0;
+      for (const s of atom.segs){ ctx.font = fontFor(fontSize, s.italic); w += ctx.measureText(s.text).width; }
+      ctx.font = fontFor(fontSize, false);
+      return w;
+    }
+    return ctx.measureText(atom.text).width;
+  }
+
+  function wrapAtoms(ctx, atoms, maxWidth, fontSize){
+    const spaceW = ctx.measureText(" ").width;
+    const rows = [];
+    let row = [], rowW = 0;
+    for (const atom of atoms){
+      const w = measureAtom(ctx, atom, fontSize);
+      const addW = row.length ? spaceW + w : w;
+      if (row.length && rowW + addW > maxWidth){
+        rows.push(row);
+        row = [atom]; rowW = w;
+      } else {
+        row.push(atom); rowW += addW;
+      }
+    }
+    if (row.length) rows.push(row);
+    return rows;
+  }
+
+  // Splits a plain word into [{text, color}] runs so $amounts can be highlighted separately
+  function moneyPieces(word, baseColor, highlightMoney){
+    if (!highlightMoney) return [{text: word, color: baseColor}];
+    const segs = [];
+    let last = 0, m;
+    MONEY_RE.lastIndex = 0;
+    while ((m = MONEY_RE.exec(word))){
+      if (m.index > last) segs.push({text: word.slice(last, m.index), color: baseColor});
+      segs.push({text: m[0], color: HIGHLIGHT_COLOR});
+      last = m.index + m[0].length;
+    }
+    if (last < word.length) segs.push({text: word.slice(last), color: baseColor});
+    return segs.length ? segs : [{text: word, color: baseColor}];
+  }
+
+  function render(){
+    const [s, e] = currentRange();
+    const visible = [];
+    for (let i = s - 1; i < e; i++){
+      const l = allLines[i];
+      if (l && isVisible(l)) visible.push(l);
+    }
+
+    const widthSetting = Math.max(300, parseInt(els.widthInput.value, 10) || 880);
+    const fontSizeSetting = Math.max(8, parseInt(els.fontSize.value, 10) || 15);
+    FONT_FAMILY = els.fontFamily.value || FONT_FAMILY;
+    const spacingVal = parseFloat(els.lineSpacing.value);
+    const spacing = isNaN(spacingVal) ? 1.32 : Math.min(3, Math.max(0.8, spacingVal));
+    const outlineVal = parseFloat(els.outlineWidth.value);
+    const outline = isNaN(outlineVal) ? 3 : Math.min(12, Math.max(0, outlineVal));
+    const showTs = els.showTimestamps.checked;
+    const highlightMoney = els.highlightMoney.checked;
+    const myName = els.myCharacter.value.trim().toLowerCase();
+    const lightenVal = parseInt(els.ownLightness.value, 10);
+    const selfLighten = isNaN(lightenVal) ? 28 : Math.min(80, Math.max(0, lightenVal)); // how much lighter your own speech is
+    const bgOpacity = Math.min(100, Math.max(0, parseInt(els.bgOpacity.value, 10) || 0)) / 100;
+    els.bgOpacityVal.textContent = Math.round(bgOpacity * 100) + "%";
+    const bgHex = /^#[0-9a-f]{6}$/i.test(els.bgColor.value) ? els.bgColor.value : "#0a0a0c";
+    const bgRgb = [1, 3, 5].map(i => parseInt(bgHex.slice(i, i + 2), 16));
+    const marker = (els.censorMarker.value || "").trim() || "+";
+
+    const dpr = window.devicePixelRatio || 1;
+    const measureCtx = document.createElement("canvas").getContext("2d");
+
+    // Tokenize every visible line once; wrapping into rows is redone per font size / box width.
+    const lineData = visible.map(line => {
+      const prefix = showTs && line.time ? `[${line.time}] ` : "";
+      let color = COLORS[line.category] || "#eee";
+      if (myName && line.speaker && line.speaker.toLowerCase() === myName){
+        // Your own speech: phone lines go fully white, say/low/lower/shouts get a touch lighter. Emotes & whispers untouched.
+        if (line.category === "phone") color = "#FFFFFF";
+        else if (line.category === "say" || line.category === "low" || line.category === "lower") color = lighten(color, selfLighten);
+      }
+      return {line, color, atoms: tokenizeLine(prefix + line.content, marker, !["action", "system", "header"].includes(line.category))};
+    });
+    function layoutFor(fs, w){
+      measureCtx.font = fontFor(fs, false);
+      const p = Math.round(fs * 0.9), lh = Math.max(8, Math.round(fs * spacing));
+      const out = []; // {atoms:[{text,censored}], color}
+      for (const d of lineData){
+        for (const rowAtoms of wrapAtoms(measureCtx, d.atoms, w - p * 2, fs)){
+          out.push({atoms: rowAtoms, color: d.color, money: d.line.category === "system", lineIdx: d.line.idx});
+        }
+      }
+      if (out.length === 0){
+        out.push({atoms:[{text:"— nothing to show. Load a chatlog and enable some categories. —", censored:false}], color:"#666"});
+      }
+      return {rows: out, pad: p, lineHeight: lh, height: p * 2 + out.length * lh};
+    }
+
+    let width = widthSetting, fontSize = fontSizeSetting, fitBoxH = null;
+    if (overlay){
+      const margin = 24;
+      if (!overlayBox){                                        // first render after upload: start from the current look
+        const first = layoutFor(fontSizeSetting, Math.min(widthSetting, Math.max(120, overlay.w - margin * 2)));
+        overlayBox = {w: Math.min(widthSetting, Math.max(120, overlay.w - margin * 2)), h: Math.min(first.height, overlay.h)};
+      }
+      overlayBox.w = Math.min(overlay.w, Math.max(120, overlayBox.w));
+      overlayBox.h = Math.min(overlay.h, Math.max(40, overlayBox.h));
+      width = overlayBox.w;
+      if (els.overlayFit.checked){
+        // biggest text size whose wrapped text still fits inside the box
+        let lo = 6, hi = 240;
+        while (lo < hi){
+          const mid = Math.ceil((lo + hi) / 2);
+          if (layoutFor(mid, width).height <= overlayBox.h) lo = mid; else hi = mid - 1;
+        }
+        fontSize = lo;
+        fitBoxH = overlayBox.h;
+      }
+    }
+    const L = layoutFor(fontSize, width);
+    const rows = L.rows, pad = L.pad, lineHeight = L.lineHeight;
+    const fitControlsOn = !!(overlay && els.overlayFit.checked);
+    for (const id of ["fontSize", "fontSizeRange"]) document.getElementById(id).disabled = fitControlsOn;   // text size is automatic while fitting
+
+    els.previewWrap.innerHTML = "";
+    canvases = [];
+    let infoExtra = "";
+    if (overlay){
+      // Screenshot mode: one image the size of the screenshot, chat box drawn on top at overlayPos.
+      const blockH = fitBoxH || L.height;
+      overlayInfo = {iw: overlay.w, ih: overlay.h, blockW: width, blockH, fontSize, fit: fitControlsOn};
+      overlayPos.x = Math.min(Math.max(0, overlayPos.x), Math.max(0, overlay.w - width));       // keep the chat on the screenshot
+      overlayPos.y = Math.min(Math.max(0, overlayPos.y), Math.max(0, overlay.h - blockH));
+      syncOverlayControls();
+      drawChunk(rows, {img: overlay.el, iw: overlay.w, ih: overlay.h, ox: Math.round(overlayPos.x), oy: Math.round(overlayPos.y), boxH: fitBoxH});
+      if (!fitControlsOn && (blockH > overlay.h || overlayPos.x + width > overlay.w || overlayPos.y + blockH > overlay.h))
+        infoExtra = " ⚠ The chat runs past the edge of the screenshot (it will be cut off) — move it, narrow the line range, or lower the font size.";
+      else if (fitControlsOn && L.height > blockH)
+        infoExtra = " ⚠ The text doesn't fit even at the smallest size — make the box bigger or show fewer lines.";
+    } else {
+      // Browsers cap canvas size (~16k device px tall), so long logs are split into several images.
+      const maxCssHeight = Math.min(8000, Math.floor(16000 / dpr));
+      const rowsPerImage = Math.max(1, Math.floor((maxCssHeight - pad * 2) / lineHeight));
+      for (let start = 0; start < rows.length; start += rowsPerImage){
+        drawChunk(rows.slice(start, start + rowsPerImage));
+      }
+      if (canvases.length > 1) infoExtra = ` Long log: split into ${canvases.length} images (each download saves one part).`;
+    }
+    saveSettings();
+    els.splitInfo.textContent = (overlay ? "Drag the chat to move it, drag its corners to resize. " : "")
+      + "Click any line in the preview to edit it (clear its text to remove it). Wrap text in *asterisks* for an emote, /slashes/ for italics."
+      + infoExtra;
+
+    function drawChunk(chunkRows, ov){
+    const blockH = (ov && ov.boxH) ? ov.boxH : pad * 2 + chunkRows.length * lineHeight;
+    const canvasW = ov ? ov.iw : width, canvasH = ov ? ov.ih : blockH;
+    const ox = ov ? ov.ox : 0, oy = ov ? ov.oy : 0;
+    const d = ov ? 1 : dpr;                              // screenshot mode exports at the screenshot's own resolution
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(canvasW * d);
+    canvas.height = Math.round(canvasH * d);
+    canvas.style.width = canvasW + "px";
+    canvas._meta = chunkRows.map(r => r.lineIdx);       // source line behind each rendered row
+    canvas._layout = {pad, lineHeight, fontSize, width: canvasW, blockW: width, blockH, offX: ox, offY: oy};
+    const box = document.createElement("div");
+    box.className = "cwrap";
+    box.style.width = canvasW + "px";
+    box.appendChild(canvas);
+    if (ov){
+      // Resize frame + corner handles (page-only; never part of the exported image)
+      const pct = (v, total) => (v / total * 100) + "%";
+      const frame = document.createElement("div");
+      frame.className = "rzFrame";
+      frame.style.left = pct(ox, canvasW); frame.style.top = pct(oy, canvasH);
+      frame.style.width = pct(width, canvasW); frame.style.height = pct(blockH, canvasH);
+      box.appendChild(frame);
+      for (const corner of ["tl", "tr", "bl", "br"]){
+        const h = document.createElement("div");
+        h.className = "rzHandle"; h.dataset.h = corner;
+        h.style.left = pct(corner.endsWith("l") ? ox : ox + width, canvasW);
+        h.style.top = pct(corner.startsWith("t") ? oy : oy + blockH, canvasH);
+        h.style.cursor = (corner === "tl" || corner === "br") ? "nwse-resize" : "nesw-resize";
+        box.appendChild(h);
+      }
+    }
+    els.previewWrap.appendChild(box);
+    canvases.push(canvas);
+
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    ctx.clearRect(0, 0, canvasW, canvasH);
+    if (ov) ctx.drawImage(ov.img, 0, 0, ov.iw, ov.ih);
+
+    if (bgOpacity > 0){
+      ctx.fillStyle = `rgba(${bgRgb[0]},${bgRgb[1]},${bgRgb[2]},${bgOpacity})`;
+      ctx.fillRect(ox, oy, width, blockH);
+    }
+
+    ctx.font = fontFor(fontSize, false);
+    ctx.textBaseline = "top";
+    ctx.lineJoin = "round";
+    ctx.miterLimit = 2;
+    const spaceW = ctx.measureText(" ").width;
+
+    let y = oy + pad;
+    for (const row of chunkRows){
+      let x = ox + pad;
+      row.atoms.forEach((atom, i) => {
+        if (i > 0) x += spaceW;
+        if (atom.censored){
+          const padX = fontSize * 0.28;
+          const barW = atom._barW != null ? atom._barW : Math.max(ctx.measureText(atom.text).width, fontSize * 0.9) + padX * 2;
+          const barH = fontSize * 0.95, barY = y + fontSize * 0.12, r = Math.min(6, barH / 2);
+          ctx.fillStyle = "#0a0a0a";
+          if (ctx.roundRect){ ctx.beginPath(); ctx.roundRect(x, barY, barW, barH, r); ctx.fill(); }
+          else { ctx.fillRect(x, barY, barW, barH); }
+          x += barW;
+        } else {
+          const base = atom.forcedColor || row.color;
+          const drawSegs = atom.segs
+            ? atom.segs.map(s => ({text: s.text, italic: !!s.italic, color: s.color || (s.emote ? COLORS.action : base)}))
+            : moneyPieces(atom.text, base, highlightMoney && row.money);
+          for (const seg of drawSegs){
+            if (seg.text === "") continue;
+            ctx.font = fontFor(fontSize, seg.italic);
+            if (outline > 0){
+              ctx.lineWidth = outline;
+              ctx.strokeStyle = "rgba(0,0,0,0.9)";
+              ctx.strokeText(seg.text, x, y);
+            }
+            ctx.fillStyle = seg.color;
+            ctx.fillText(seg.text, x, y);
+            x += ctx.measureText(seg.text).width;
+          }
+          ctx.font = fontFor(fontSize, false);
+        }
+      });
+      y += lineHeight;
+    }
+    }
+  }
+
+  // ---------- Edit lines directly in the preview ----------
+  // Click a line in the image -> an editor opens over it. Enter (or clicking away) applies, Esc cancels.
+  // Edits change the line's text only; its color/category stays as parsed.
+  els.previewWrap.addEventListener("click", e => {
+    if (suppressClick) return;                         // that "click" was the end of a drag
+    if (e.target.closest(".inlineEdit, .editBar")) return;
+    const canvas = e.target.closest("canvas");
+    if (!canvas || !canvas._meta) return;
+    const {pad, lineHeight, fontSize, width, blockW, blockH, offX, offY} = canvas._layout;
+    const rect = canvas.getBoundingClientRect();
+    const scale = rect.width / width; // < 1 if the preview is shrunk to fit
+    const cx = (e.clientX - rect.left) / scale, cy = (e.clientY - rect.top) / scale;
+    if (cx < offX || cx > offX + blockW || cy < offY || cy > offY + blockH) return;   // clicked the screenshot, not the chat
+    const rowIdx = Math.min(canvas._meta.length - 1,
+      Math.max(0, Math.floor((cy - offY - pad) / lineHeight)));
+    const lineIdx = canvas._meta[rowIdx];
+    const line = lineIdx != null ? allLines[lineIdx - 1] : null;
+    if (!line) return;
+    const first = canvas._meta.indexOf(lineIdx);
+    const count = canvas._meta.filter(i => i === lineIdx).length;
+    startInlineEdit(canvas, line, (offY + pad + first * lineHeight) * scale, count * lineHeight * scale, fontSize * scale,
+      offX * scale, blockW * scale);
+  });
+
+  function startInlineEdit(canvas, line, top, height, fontPx, left = 0, editW = null){
+    const box = canvas.parentElement;
+    box.querySelectorAll(".inlineEdit, .editBar").forEach(n => n.remove());
+    const ta = document.createElement("textarea");
+    ta.className = "inlineEdit";
+    ta.value = line.content;
+    ta.spellcheck = false;
+    ta.style.left = left + "px";
+    if (editW){ ta.style.right = "auto"; ta.style.width = editW + "px"; }
+    ta.style.top = Math.max(0, top - 6) + "px";
+    ta.style.minHeight = (height + 12) + "px";
+    ta.style.fontSize = fontPx + "px";
+    ta.style.fontFamily = FONT_FAMILY;
+    ta.title = "Enter = apply, Esc = cancel. Select text, then use the buttons above (or Ctrl+E / Ctrl+I / Ctrl+B).";
+    box.appendChild(ta);
+    const fit = () => { ta.style.height = "auto"; ta.style.height = Math.max(height + 12, ta.scrollHeight + 4) + "px"; };
+    fit();
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+
+    // Style bar: select text in the editor, click a button, and the markers are inserted (or removed if already there).
+    // The buttons swallow mousedown so the editor keeps focus and doesn't close.
+    const textStyled = line.category !== "action" && line.category !== "system" && line.category !== "header";
+    const blackoutMarker = () => (els.censorMarker.value || "").trim() || "+";
+    // wrapWord: italics only render when the slashes sit at word edges, so widen the selection to whole words.
+    function styleSelection(marker, wrapWord){
+      let s = ta.selectionStart, e = ta.selectionEnd, v = ta.value;
+      if (s === e){                                   // no selection: use the word under the cursor
+        while (s > 0 && !/\s/.test(v[s - 1])) s--;
+        while (e < v.length && !/\s/.test(v[e])) e++;
+      }
+      while (s < e && /\s/.test(v[s])) s++;           // keep markers hugging the text, not the spaces
+      while (e > s && /\s/.test(v[e - 1])) e--;
+      if (s >= e) return;
+      if (wrapWord){
+        while (s > 0 && !/\s/.test(v[s - 1])) s--;
+        while (e < v.length && !/\s/.test(v[e])) e++;
+      }
+      const L = marker.length;
+      if (v.slice(s - L, s) === marker && v.slice(e, e + L) === marker && s - L >= 0){
+        v = v.slice(0, s - L) + v.slice(s, e) + v.slice(e + L); s -= L; e -= L;              // already wrapped just outside -> remove
+      } else if (e - s >= 2 * L && v.slice(s, s + L) === marker && v.slice(e - L, e) === marker){
+        v = v.slice(0, s) + v.slice(s + L, e - L) + v.slice(e); e -= 2 * L;                  // selection includes the markers -> remove
+      } else {
+        v = v.slice(0, s) + marker + v.slice(s, e) + marker + v.slice(e); s += L; e += L;    // wrap
+      }
+      ta.value = v;
+      ta.setSelectionRange(s, e);
+      fit();
+      ta.focus();
+    }
+    const bar = document.createElement("div");
+    bar.className = "editBar";
+    bar.style.top = Math.max(-34, top - 6 - 36) + "px";
+    bar.style.left = left + "px";
+    const addBtn = (label, title, enabled, fn) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = label;
+      b.title = enabled ? title : "Not available on this kind of line";
+      b.disabled = !enabled;
+      b.addEventListener("mousedown", ev => ev.preventDefault());
+      b.addEventListener("click", fn);
+      bar.appendChild(b);
+    };
+    addBtn("✱ Emote", "Color the selected text as an emote (Ctrl+E)", textStyled, () => styleSelection("*", false));
+    addBtn("I Italic", "Italicize the selected text (Ctrl+I)", textStyled, () => styleSelection("/", true));
+    addBtn("█ Black out", "Black out the selected text (Ctrl+B)", true, () => styleSelection(blackoutMarker(), false));
+    // Recolor: wraps the selection as {#RRGGBB:text}. Re-applying the same color (or ✕) removes it.
+    function colorSelection(hex){
+      let s = ta.selectionStart, e = ta.selectionEnd, v = ta.value;
+      if (s === e){
+        while (s > 0 && !/\s/.test(v[s - 1])) s--;
+        while (e < v.length && !/\s/.test(v[e])) e++;
+      }
+      while (s < e && /\s/.test(v[s])) s++;
+      while (e > s && /\s/.test(v[e - 1])) e--;
+      if (s >= e) return;
+      // if the selection touches an existing color tag, take the whole tag so tags never nest
+      const tagRe = /\{#[0-9a-fA-F]{6}:[^{}]*\}/g;
+      let tm; const s0 = s, e0 = e;
+      while ((tm = tagRe.exec(v))){
+        const ts = tm.index, te = ts + tm[0].length;
+        if (s0 < te && e0 > ts){ s = Math.min(s, ts); e = Math.max(e, te); }
+      }
+      const seg = v.slice(s, e);
+      const single = /^\{(#[0-9a-fA-F]{6}):[^{}]*\}$/.exec(seg);
+      const inner = seg.replace(/\{#[0-9a-fA-F]{6}:|\}/g, "");
+      let out, s2;
+      if (!hex || (single && single[1].toLowerCase() === hex.toLowerCase())){ out = inner; s2 = s; }
+      else { out = `{${hex}:${inner}}`; s2 = s + hex.length + 2; }
+      ta.value = v.slice(0, s) + out + v.slice(e);
+      ta.setSelectionRange(s2, s2 + inner.length);
+      fit();
+      ta.focus();
+    }
+    const swatches = ["#FF5555", "#FFA040", "#FFE347", "#56D64B", "#4FD8FF", "#3896F3", "#C2A3DA", "#FF4DC8", "#FFFFFF", "#9A9A9A"];
+    const colorWrap = document.createElement("span");
+    colorWrap.className = "swatchRow";
+    for (const hex of swatches){
+      const sw = document.createElement("button");
+      sw.type = "button"; sw.className = "sw"; sw.style.background = hex; sw.title = `Color the selection ${hex}`;
+      sw.addEventListener("mousedown", ev => ev.preventDefault());
+      sw.addEventListener("click", () => colorSelection(hex));
+      colorWrap.appendChild(sw);
+    }
+    const custom = document.createElement("input");
+    custom.type = "color"; custom.value = "#ff8800"; custom.className = "swCustom"; custom.title = "Pick any color for the selection";
+    custom.addEventListener("change", () => colorSelection(custom.value.toUpperCase()));
+    colorWrap.appendChild(custom);
+    const clearColor = document.createElement("button");
+    clearColor.type = "button"; clearColor.textContent = "✕"; clearColor.title = "Remove color from the selection";
+    clearColor.addEventListener("mousedown", ev => ev.preventDefault());
+    clearColor.addEventListener("click", () => colorSelection(null));
+    colorWrap.appendChild(clearColor);
+    bar.appendChild(colorWrap);
+    const tip = document.createElement("span");
+    tip.textContent = "Select text, then click";
+    bar.appendChild(tip);
+    box.appendChild(bar);
+    // Keep the editor open while focus moves between the editor and its own style bar (e.g. the color picker).
+    bar.addEventListener("focusout", () => {
+      setTimeout(() => {
+        if (!done && !bar.contains(document.activeElement) && document.activeElement !== ta) finish(true);
+      }, 0);
+    });
+    ta.addEventListener("keydown", ev => {
+      if (!(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
+      const k = ev.key.toLowerCase();
+      if (k === "e" && textStyled){ ev.preventDefault(); styleSelection("*", false); }
+      else if (k === "i" && textStyled){ ev.preventDefault(); styleSelection("/", true); }
+      else if (k === "b"){ ev.preventDefault(); styleSelection(blackoutMarker(), false); }
+    });
+    let done = false;
+    const finish = apply => {
+      if (done) return; done = true;
+      const text = ta.value.replace(/\s*\n\s*/g, " ").trim();
+      if (apply && text === ""){
+        hiddenIdx.add(line.idx);          // clearing a line removes it from the image
+        updateCounts();
+      } else if (apply && text !== line.content){
+        line.content = text;
+        updateCounts();
+      }
+      render();
+    };
+    ta.addEventListener("input", fit);
+    ta.addEventListener("keydown", ev => {
+      if (ev.key === "Enter" && !ev.shiftKey){ ev.preventDefault(); finish(true); }
+      else if (ev.key === "Escape"){ ev.preventDefault(); finish(false); }
+    });
+    ta.addEventListener("blur", ev => { if (ev.relatedTarget && bar.contains(ev.relatedTarget)) return; finish(true); });
+  }
+
+  // ---------- Export ----------
+  function downloadFilename(part, total){
+    const d = new Date();
+    const pad2 = n => String(n).padStart(2, "0");
+    const stamp = `${d.getDate()}.${d.getMonth()+1}.${d.getFullYear()}_${pad2(d.getHours())}.${pad2(d.getMinutes())}.${pad2(d.getSeconds())}`;
+    return total > 1 ? `${stamp}_chatlog_part${part}.png` : `${stamp}_chatlog.png`;
+  }
+
+  const toBlob = canvas => new Promise(res => canvas.toBlob(res, "image/png"));
+
+  els.downloadBtn.addEventListener("click", async () => {
+    const total = canvases.length;
+    for (let i = 0; i < total; i++){
+      const blob = await toBlob(canvases[i]);
+      if (!blob){ alert("Couldn't export the image. Try a smaller line range or width."); return; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = downloadFilename(i + 1, total);
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      if (i < total - 1) await new Promise(r => setTimeout(r, 400));
+    }
+  });
+
+  let copyStatusTimer = null;
+  function setCopyStatus(msg, isError){
+    els.copyStatus.textContent = msg;
+    els.copyStatus.style.color = isError ? "#ff8a8a" : "#7ee08a";
+    clearTimeout(copyStatusTimer);
+    if (msg) copyStatusTimer = setTimeout(() => { els.copyStatus.textContent = ""; }, isError ? 9000 : 3000);
+  }
+
+  // Fallback for browsers/contexts without the async Clipboard API: put the image in a hidden
+  // editable element, select it, and use the classic copy command.
+  function copyViaSelection(canvas){
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const holder = document.createElement("div");
+        holder.contentEditable = "true";
+        holder.style.cssText = "position:fixed; left:-9999px; top:0; opacity:0;";
+        holder.appendChild(img);
+        document.body.appendChild(holder);
+        const range = document.createRange();
+        range.selectNodeContents(holder);
+        const sel = window.getSelection();
+        sel.removeAllRanges(); sel.addRange(range);
+        let ok = false;
+        try { ok = document.execCommand("copy"); } catch (e) { /* handled below */ }
+        sel.removeAllRanges(); holder.remove();
+        ok ? resolve() : reject(new Error("copy command was refused"));
+      };
+      img.onerror = () => reject(new Error("couldn't prepare the image"));
+      img.src = canvas.toDataURL("image/png");
+    });
+  }
+
+  els.copyBtn.addEventListener("click", async () => {
+    if (canvases.length > 1){
+      setCopyStatus("This log is split into several images — use Download PNG, or narrow the line range.", true);
+      return;
+    }
+    setCopyStatus("Copying…", false);
+    try {
+      if (!navigator.clipboard || !window.ClipboardItem) throw new Error("Clipboard API not available in this page");
+      // Hand the clipboard a promise so the write starts inside the click (keeps the browser's "user gesture" valid).
+      const pngPromise = toBlob(canvases[0]).then(b => { if (!b) throw new Error("couldn't render the image"); return b; });
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": pngPromise })]);
+      setCopyStatus("Copied to clipboard ✓", false);
+    } catch (err1) {
+      try {
+        await copyViaSelection(canvases[0]);
+        setCopyStatus("Copied to clipboard ✓", false);
+      } catch (err2) {
+        setCopyStatus(`Couldn't copy (${err1.name}: ${err1.message}). Use Download PNG instead.`, true);
+      }
+    }
+  });
+
+  // ---------- Screenshot overlay ----------
+  const ovEl = id => document.getElementById(id);
+  function syncOverlayControls(){
+    if (!overlay || !overlayInfo) return;
+    ovEl("overlayControls").style.display = "block";
+    ovEl("overlayName").textContent = `${overlay.name} — ${overlay.w}×${overlay.h}`;
+    const maxX = Math.max(0, overlayInfo.iw - overlayInfo.blockW), maxY = Math.max(0, overlayInfo.ih - overlayInfo.blockH);
+    ovEl("overlayXRange").max = maxX; ovEl("overlayYRange").max = maxY;
+    ovEl("overlayX").max = maxX; ovEl("overlayY").max = maxY;
+    ovEl("overlayXRange").value = ovEl("overlayX").value = Math.round(overlayPos.x);
+    ovEl("overlayYRange").value = ovEl("overlayY").value = Math.round(overlayPos.y);
+    if (overlayBox){
+      ovEl("overlayWRange").max = ovEl("overlayW").max = overlay.w;
+      ovEl("overlayHRange").max = ovEl("overlayH").max = overlay.h;
+      ovEl("overlayWRange").value = ovEl("overlayW").value = Math.round(overlayBox.w);
+      ovEl("overlayHRange").value = ovEl("overlayH").value = Math.round(overlayBox.h);
+    }
+    const fit = !!overlayInfo.fit;
+    ovEl("overlayHRange").disabled = ovEl("overlayH").disabled = !fit;               // height is automatic when not fitting
+    ovEl("overlayFontInfo").textContent = fit
+      ? `Text size: ${overlayInfo.fontSize}px (automatic — drag a corner of the box, or set its size above)`
+      : "Text size follows the Font size setting; the box height follows the text.";
+  }
+  function loadScreenshot(file){
+    if (!file || !file.type.startsWith("image/")) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const MAX = 6000;                                   // keep the canvas within browser limits
+      if (Math.max(w, h) > MAX){ const k = MAX / Math.max(w, h); w = Math.round(w * k); h = Math.round(h * k); }
+      if (overlay) URL.revokeObjectURL(overlay.url);
+      overlay = {el: img, w, h, name: file.name, url};
+      overlayBox = null;                                  // re-derived from the current settings on the next render
+      overlayPos.x = 24; overlayPos.y = 24;
+      render();
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); alert("Couldn't read that image file."); };
+    img.src = url;
+  }
+  ovEl("screenshotInput").addEventListener("change", e => { loadScreenshot(e.target.files[0]); e.target.value = ""; });
+  ovEl("overlayRemoveBtn").addEventListener("click", () => {
+    if (overlay) URL.revokeObjectURL(overlay.url);
+    overlay = null; overlayInfo = null; overlayBox = null;
+    ovEl("overlayControls").style.display = "none";
+    render();
+  });
+  for (const [r, n, axis] of [["overlayXRange","overlayX","x"], ["overlayYRange","overlayY","y"]]){
+    for (const id of [r, n]) ovEl(id).addEventListener("input", e => {
+      const v = parseFloat(e.target.value); if (isNaN(v)) return;
+      overlayPos[axis] = v; render();
+    });
+  }
+  for (const [r, n, key] of [["overlayWRange","overlayW","w"], ["overlayHRange","overlayH","h"]]){
+    for (const id of [r, n]) ovEl(id).addEventListener("input", e => {
+      const v = parseFloat(e.target.value); if (isNaN(v) || !overlayBox) return;
+      overlayBox[key] = v; render();
+    });
+  }
+  ovEl("overlayFit").addEventListener("change", () => render());
+  ovEl("overlayControls").querySelectorAll("[data-corner]").forEach(b => b.addEventListener("click", () => {
+    if (!overlayInfo) return;
+    const m = 24, {iw, ih, blockW, blockH} = overlayInfo, c = b.dataset.corner;
+    overlayPos.x = c.endsWith("l") ? m : iw - blockW - m;
+    overlayPos.y = c.startsWith("t") ? m : ih - blockH - m;
+    render();
+  }));
+
+  // Drag the chat block around on the preview (a click without moving still opens the line editor).
+  let dragFrame = 0;
+  els.previewWrap.addEventListener("pointerdown", e => {
+    if (!overlay || e.button !== 0) return;
+    const canvas = e.target.closest("canvas");
+    if (!canvas || !canvas._layout) return;
+    const L = canvas._layout, rect = canvas.getBoundingClientRect(), scale = rect.width / L.width;
+    const cx = (e.clientX - rect.left) / scale, cy = (e.clientY - rect.top) / scale;
+    if (cx < L.offX || cx > L.offX + L.blockW || cy < L.offY || cy > L.offY + L.blockH) return;
+    drag = {sx: e.clientX, sy: e.clientY, ox: overlayPos.x, oy: overlayPos.y, scale, moved: false};
+  });
+  // Resize the chat box by its corner handles. Text re-fits to the new size while "Fit text to box" is on.
+  let resize = null;
+  els.previewWrap.addEventListener("pointerdown", e => {
+    const handle = e.target.closest(".rzHandle");
+    if (!handle || !overlay || !overlayInfo || e.button !== 0) return;
+    e.preventDefault();
+    const canvas = els.previewWrap.querySelector("canvas");
+    const scale = canvas.getBoundingClientRect().width / canvas._layout.width;
+    resize = {corner: handle.dataset.h, sx: e.clientX, sy: e.clientY, scale, x: overlayPos.x, y: overlayPos.y,
+              w: overlayInfo.blockW, h: overlayInfo.blockH, fit: overlayInfo.fit};
+  });
+  window.addEventListener("pointermove", e => {
+    if (!resize) return;
+    const r = resize, dx = (e.clientX - r.sx) / r.scale, dy = (e.clientY - r.sy) / r.scale;
+    const MINW = 120, MINH = 40;
+    let left = r.x, right = r.x + r.w, top = r.y, bottom = r.y + r.h;
+    if (r.corner.endsWith("l")) left += dx; else right += dx;
+    if (r.fit){ if (r.corner.startsWith("t")) top += dy; else bottom += dy; }
+    left = Math.max(0, left); right = Math.min(overlay.w, right);
+    top = Math.max(0, top); bottom = Math.min(overlay.h, bottom);
+    if (right - left < MINW){ if (r.corner.endsWith("l")) left = right - MINW; else right = left + MINW; }
+    if (r.fit && bottom - top < MINH){ if (r.corner.startsWith("t")) top = bottom - MINH; else bottom = top + MINH; }
+    left = Math.round(left); right = Math.round(right); top = Math.round(top); bottom = Math.round(bottom);
+    overlayPos.x = left; overlayBox.w = right - left;
+    if (r.fit){ overlayPos.y = top; overlayBox.h = bottom - top; }
+    if (!dragFrame) dragFrame = requestAnimationFrame(() => { dragFrame = 0; render(); });
+  });
+  window.addEventListener("pointerup", () => { resize = null; });
+
+  window.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+    drag.moved = true;
+    overlayPos.x = drag.ox + dx / drag.scale; overlayPos.y = drag.oy + dy / drag.scale;
+    if (!dragFrame) dragFrame = requestAnimationFrame(() => { dragFrame = 0; render(); });
+  });
+  window.addEventListener("pointerup", () => {
+    if (!drag) return;
+    suppressClick = drag.moved; drag = null;
+    setTimeout(() => { suppressClick = false; }, 0);
+  });
+
+  // ---------- Sliders + saved settings ----------
+  // Each slider is kept in sync with its number box (type a value or drag).
+  const RANGE_PAIRS = [["ownLightnessRange","ownLightness"], ["widthRange","widthInput"], ["fontSizeRange","fontSize"],
+                       ["outlineWidthRange","outlineWidth"], ["lineSpacingRange","lineSpacing"]];
+  function syncRanges(){
+    for (const [r, n] of RANGE_PAIRS) document.getElementById(r).value = document.getElementById(n).value;
+  }
+  for (const [r, n] of RANGE_PAIRS){
+    const range = document.getElementById(r), num = document.getElementById(n);
+    range.addEventListener("input", () => { num.value = range.value; num.dispatchEvent(new Event("input", {bubbles:true})); });
+    num.addEventListener("input", () => { range.value = num.value; });
+  }
+
+  // Everything except the chatlog text itself (and edits) is remembered between visits.
+  const SETTINGS_KEY = "providenceChatloggerSettings.v1";
+  const LEGACY_SETTINGS_KEY = "chatlogMagicianSettings.v1"; // pre-rename key; migrated on first load so nobody loses their settings
+  const SETTING_IDS = ["widthInput","fontSize","fontFamily","outlineWidth","lineSpacing","bgColor","bgOpacity",
+    "highlightMoney","dedupeLines","censorMarker","myCharacter","showTimestamps",
+    "catAction","catSay","catLow","catFaction","catPhone","catWhisper","catPerform","catOoc","catSystem","catHeader"];
+  function snapshotSettings(){
+    const o = {};
+    for (const id of SETTING_IDS){ const el = document.getElementById(id); o[id] = el.type === "checkbox" ? el.checked : el.value; }
+    return o;
+  }
+  function applySettings(o){
+    for (const id of SETTING_IDS){
+      if (!(id in o)) continue;
+      const el = document.getElementById(id);
+      if (el.type === "checkbox") el.checked = !!o[id];
+      else if (el.tagName === "SELECT"){ if ([...el.options].some(opt => opt.value === o[id])) el.value = o[id]; }
+      else el.value = o[id];
+    }
+    syncRanges();
+  }
+  const DEFAULT_SETTINGS = snapshotSettings();
+  function saveSettings(){
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(snapshotSettings())); } catch (err) { /* storage unavailable — fine */ }
+  }
+  els.resetSettingsBtn = document.getElementById("resetSettingsBtn");
+  els.resetSettingsBtn.addEventListener("click", () => {
+    applySettings(DEFAULT_SETTINGS);
+    try { localStorage.removeItem(SETTINGS_KEY); } catch (err) {}
+    updateCounts();
+    render();
+  });
+  try {
+    let saved = localStorage.getItem(SETTINGS_KEY);
+    if (!saved){
+      saved = localStorage.getItem(LEGACY_SETTINGS_KEY);           // carry settings over from the old name
+      if (saved){ localStorage.setItem(SETTINGS_KEY, saved); localStorage.removeItem(LEGACY_SETTINGS_KEY); }
+    }
+    if (saved) applySettings(JSON.parse(saved));
+  } catch (err) { /* ignore corrupt/blocked storage */ }
+  syncRanges();
+
+  // ---------- Init ----------
+  render();
+})();
+</script>
+</body>
+</html>

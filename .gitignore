@@ -1,0 +1,19 @@
+# Personal data — real roleplay chatlogs and screenshots used as test material. Never commit these.
+Chatlog-examples/
+Screenshot-examples/
+
+# Chatlog exports and screenshots dropped into the folder while testing
+*.txt
+*.png
+*.jpg
+*.jpeg
+
+# Editor / tooling / OS noise
+.claude/
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+*.tmp
+*.log
