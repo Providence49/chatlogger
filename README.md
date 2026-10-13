@@ -51,7 +51,7 @@ That's it. You are installed.
 
 ## 2. Your first picture
 
-The left side is the menu. The right side shows your picture as you build it.
+The left side is the menu. The right side shows your picture as you build it. You can **drag the thin bar between them** to make the menu wider or narrower (double-click the bar to put it back to normal). The tool remembers the width next time.
 
 ### Step 1: Put your chat in
 

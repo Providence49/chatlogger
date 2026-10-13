@@ -22,12 +22,25 @@
   }
   /* The window never scrolls: the left menu stays put, and only the preview pane scrolls. */
   .app{
-    display:grid; grid-template-columns: 420px 1fr; grid-template-rows: minmax(0, 1fr); height:100vh; overflow:hidden;
+    --menuW: 420px;   /* menu width — changed by dragging the divider */
+    display:grid; grid-template-columns: var(--menuW) 7px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height:100vh; overflow:hidden;
   }
   .left{
-    background:var(--panel); border-right:1px solid var(--border);
+    background:var(--panel);
     display:flex; flex-direction:column; min-width:0; min-height:0; overflow-y:auto;
   }
+  /* Draggable divider between the menu and the preview */
+  .splitter{
+    position:relative; background:var(--border); cursor:col-resize; touch-action:none; outline:none;
+    transition:background .12s;
+  }
+  .splitter::after{            /* little grip so it's obvious it can be dragged */
+    content:""; position:absolute; left:50%; top:50%; width:3px; height:34px; transform:translate(-50%,-50%);
+    border-radius:2px; background:rgba(255,255,255,.28);
+  }
+  .splitter:hover, .splitter:focus-visible, body.resizingMenu .splitter{ background:var(--accent); }
+  .splitter:hover::after, .splitter:focus-visible::after, body.resizingMenu .splitter::after{ background:rgba(255,255,255,.85); }
+  body.resizingMenu{ cursor:col-resize; user-select:none; }
   .left h1{ font-size:15px; margin:0; padding:12px 14px; border-bottom:1px solid var(--border); }
   .left h1 span{ color:var(--muted); font-weight:400; }
   .section{ padding:12px 14px; border-bottom:1px solid var(--border); }
@@ -237,6 +250,9 @@
     </div>
 
   </div>
+
+  <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" tabindex="0"
+       title="Drag to resize the menu (double-click to reset)"></div>
 
   <div class="right">
     <div class="toolbar">
@@ -1313,6 +1329,49 @@
   } catch (err) { /* ignore corrupt/blocked storage */ }
   syncRanges();
   parseNameFilter();
+
+  // ---------- Resizable menu ----------
+  // Drag the divider to make the menu wider or narrower. Double-click resets it; arrow keys nudge it.
+  // The width is remembered in the browser like the other settings.
+  (function setupSplitter(){
+    const app = document.querySelector(".app"), splitter = document.getElementById("splitter");
+    const KEY = "providenceChatloggerMenuWidth.v1", DEFAULT_W = 420, MIN_W = 260;
+    const maxW = () => Math.max(MIN_W, Math.min(900, Math.round(window.innerWidth * 0.65)));   // always leave room for the preview
+    const clampW = w => Math.min(maxW(), Math.max(MIN_W, Math.round(w)));
+    const setW = (w, save) => {
+      const v = clampW(w);
+      app.style.setProperty("--menuW", v + "px");
+      splitter.setAttribute("aria-valuenow", v);
+      if (save){ try { localStorage.setItem(KEY, String(v)); } catch (err) { /* storage unavailable — fine */ } }
+      return v;
+    };
+    try { const saved = parseInt(localStorage.getItem(KEY), 10); if (!isNaN(saved)) setW(saved, false); } catch (err) {}
+
+    let startX = 0, startW = 0, dragging = false;
+    splitter.addEventListener("pointerdown", e => {
+      if (e.button !== 0) return;
+      dragging = true; startX = e.clientX; startW = document.querySelector(".left").getBoundingClientRect().width;
+      splitter.setPointerCapture(e.pointerId);
+      document.body.classList.add("resizingMenu");
+      e.preventDefault();
+    });
+    splitter.addEventListener("pointermove", e => { if (dragging) setW(startW + (e.clientX - startX), false); });
+    const stop = e => {
+      if (!dragging) return;
+      dragging = false; document.body.classList.remove("resizingMenu");
+      try { splitter.releasePointerCapture(e.pointerId); } catch (err) {}
+      setW(document.querySelector(".left").getBoundingClientRect().width, true);
+    };
+    splitter.addEventListener("pointerup", stop);
+    splitter.addEventListener("pointercancel", stop);
+    splitter.addEventListener("dblclick", () => setW(DEFAULT_W, true));
+    splitter.addEventListener("keydown", e => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      setW(document.querySelector(".left").getBoundingClientRect().width + (e.key === "ArrowRight" ? 20 : -20), true);
+    });
+    window.addEventListener("resize", () => setW(document.querySelector(".left").getBoundingClientRect().width, false));   // keep it within bounds
+  })();
 
   // ---------- Init ----------
   render();
