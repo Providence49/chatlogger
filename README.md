@@ -136,6 +136,7 @@ Above the editor you will see a small bar with buttons. **Select some words** in
 | **✱ Emote** | Ctrl + E | Makes the selected words purple, like an emote (good for a quick action in the middle of speech) |
 | **I Italic** | Ctrl + I | Makes the selected words italic |
 | **█ Black out** | Ctrl + B | Covers the selected words with a black bar (see [section 5](#5-hiding-names-and-words-blackout)) |
+| **▣ Always** | | Adds the selected words to the "always black out" list, so they are hidden in every line, not just this one |
 | **Colored dots** | | Colors just the selected words (pick one of the 10 dots, or the box at the end for any color) |
 | **✕** | | Removes the color from the selected words |
 
@@ -162,6 +163,16 @@ Jane Doe says: My real name is +John Smith+, don't tell anyone.
 The picture shows a black bar where "John Smith" was. The `+` signs never show up in the picture.
 
 Want to use a different symbol than `+`? Change it under **7. Black out text → Marker**.
+
+### Words that are always blacked out
+
+If the same name or word shows up all over your chat, you don't have to hide it line by line. Under **7. Black out text** there is a box called **Always black out these words**.
+
+- Type the words or names you want hidden, **one per line** (or separated by commas), for example `Jane Doe` and `555-1234`.
+- Every time one of them appears, **anywhere, in any line**, it is blacked out automatically. This includes names at the start of a line (`Jane Doe says: ...`), inside emotes, and in server messages.
+- Capital letters don't matter (`jane doe` is hidden too). It only matches whole words, so hiding `Jane` will not touch `Janet`.
+- **Shortcut:** click a line on the picture, select the word(s) in the editor, and click **▣ Always**. They are added to the list for you and hidden everywhere from then on. To un-hide something, delete it from the box.
+- The list is remembered with your other settings, and **Reset settings** clears it.
 
 ---
 

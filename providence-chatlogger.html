@@ -247,6 +247,9 @@
         <label>Marker <input type="text" id="censorMarker" value="+" maxlength="4" style="width:48px; text-align:center;"></label>
       </div>
       <div class="hint">Wrap text with the marker right in the chatlog box, e.g. <code>+Jane Doe+</code> — everything between a pair of markers gets blacked out. The marker itself never shows up in the image.</div>
+      <div class="hint" style="margin:12px 0 5px; color:var(--text);">Always black out these words <span id="autoBlackoutStatus" style="color:var(--accent);"></span></div>
+      <textarea id="autoBlackout" rows="3" spellcheck="false" placeholder="One per line or separated by commas, e.g.&#10;Jane Doe&#10;555-1234" style="width:100%; resize:vertical; background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:7px 8px; font:12px/1.4 Consolas, monospace;"></textarea>
+      <div class="hint">Every time one of these words or names appears, anywhere in any line, it is blacked out automatically. Capital letters don't matter, and "Jane" won't match inside "Janet". You can also select words in the line editor and click <b>▣ Always</b> to add them here.</div>
     </div>
 
   </div>
@@ -376,7 +379,7 @@
   const els = {};
   ["logInput","fileInput","rangeStart","rangeEnd","fullRangeBtn","rangeInfo",
    "catAction","catSay","catLow","catFaction","catPhone","catWhisper","catPerform","catOoc","catSystem","catHeader","showTimestamps",
-   "widthInput","fontSize","fontFamily","outlineWidth","lineSpacing","bgColor","bgOpacity","bgOpacityVal","bgTransparentBtn","bgSolidBtn","highlightMoney","dedupeLines","censorMarker","myCharacter","ownLightness",
+   "widthInput","fontSize","fontFamily","outlineWidth","lineSpacing","bgColor","bgOpacity","bgOpacityVal","bgTransparentBtn","bgSolidBtn","highlightMoney","dedupeLines","censorMarker","myCharacter","ownLightness","autoBlackout","autoBlackoutStatus",
    "visibleCount","copyBtn","copyStatus","overlayFit","nameFilterInput","nameFilterStatus","nameChips","downloadBtn","previewWrap","splitInfo"
   ].forEach(id => els[id] = document.getElementById(id));
   let canvases = []; // one canvas per exported image (long logs are split)
@@ -517,7 +520,7 @@
 
   // ---------- Category + style listeners ----------
   Object.values(catCheckbox).forEach(cb => cb.addEventListener("change", () => { updateCounts(); render(); }));
-  [els.showTimestamps, els.widthInput, els.fontSize, els.fontFamily, els.outlineWidth, els.lineSpacing, els.bgColor, els.bgOpacity, els.highlightMoney, els.censorMarker, els.myCharacter, els.ownLightness]
+  [els.showTimestamps, els.widthInput, els.fontSize, els.fontFamily, els.outlineWidth, els.lineSpacing, els.bgColor, els.bgOpacity, els.highlightMoney, els.censorMarker, els.myCharacter, els.ownLightness, els.autoBlackout]
     .forEach(el => el.addEventListener("input", render));
   els.bgTransparentBtn.addEventListener("click", () => { els.bgOpacity.value = 0; render(); });
   els.bgSolidBtn.addEventListener("click", () => { els.bgOpacity.value = 100; render(); });
@@ -558,6 +561,35 @@
     return pieces;
   }
 
+  // "Always black out these words": a list typed in the menu. Matches are whole words/phrases, any capitalization.
+  let autoCensorRe = null;
+  function buildAutoCensor(){
+    const words = els.autoBlackout.value.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+    els.autoBlackoutStatus.textContent = words.length ? `— ${words.length} word${words.length > 1 ? "s" : ""} hidden` : "";
+    if (!words.length) return null;
+    words.sort((a, b) => b.length - a.length);                 // longer phrases first, so "Jane Doe" wins over "Jane"
+    const esc = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"));
+    return new RegExp("(?<![\\p{L}\\p{N}_])(?:" + esc.join("|") + ")(?![\\p{L}\\p{N}_])", "giu");
+  }
+  // Splits the not-yet-censored pieces again wherever a listed word appears.
+  function expandAutoCensor(pieces){
+    if (!autoCensorRe) return pieces;
+    const out = [];
+    for (const p of pieces){
+      if (p.censored){ out.push(p); continue; }
+      let last = 0, m;
+      autoCensorRe.lastIndex = 0;
+      while ((m = autoCensorRe.exec(p.text))){
+        if (m[0] === ""){ autoCensorRe.lastIndex++; continue; }
+        if (m.index > last) out.push({text: p.text.slice(last, m.index), censored:false, start: p.start + last});
+        out.push({text: m[0], censored:true});
+        last = m.index + m[0].length;
+      }
+      if (last < p.text.length) out.push({text: p.text.slice(last), censored:false, start: p.start + last});
+    }
+    return out;
+  }
+
   // Per-word colors are stored in the text as {#RRGGBB:colored words}. This removes the tags and
   // returns the plain text plus, for every character of it, the color it should have (or null).
   function stripColorTags(text){
@@ -591,7 +623,7 @@
     const stripped = stripColorTags(rest);
     rest = stripped.text;
     const colorAt = stripped.colorAt;
-    const pieces = splitByMarker(rest, marker);
+    const pieces = expandAutoCensor(splitByMarker(rest, marker));
 
     // Flatten with a placeholder for each blacked-out span so *emote* and /italic/ can span across them.
     const flat = pieces.map(p => p.censored ? "\u0001" : p.text).join("");
@@ -726,6 +758,7 @@
     const bgHex = /^#[0-9a-f]{6}$/i.test(els.bgColor.value) ? els.bgColor.value : "#0a0a0c";
     const bgRgb = [1, 3, 5].map(i => parseInt(bgHex.slice(i, i + 2), 16));
     const marker = (els.censorMarker.value || "").trim() || "+";
+    autoCensorRe = buildAutoCensor();
 
     const dpr = window.devicePixelRatio || 1;
     const measureCtx = document.createElement("canvas").getContext("2d");
@@ -991,6 +1024,21 @@
     addBtn("✱ Emote", "Color the selected text as an emote (Ctrl+E)", textStyled, () => styleSelection("*", false));
     addBtn("I Italic", "Italicize the selected text (Ctrl+I)", textStyled, () => styleSelection("/", true));
     addBtn("█ Black out", "Black out the selected text (Ctrl+B)", true, () => styleSelection(blackoutMarker(), false));
+    // Adds the selected words to the "Always black out" list, so they are hidden everywhere from now on.
+    addBtn("▣ Always", "Add the selected words to the 'Always black out' list (hides them in every line)", true, () => {
+      let s = ta.selectionStart, e = ta.selectionEnd, v = ta.value;
+      if (s === e){
+        while (s > 0 && !/\s/.test(v[s - 1])) s--;
+        while (e < v.length && !/\s/.test(v[e])) e++;
+      }
+      const word = v.slice(s, e).replace(/\{#[0-9a-fA-F]{6}:|\}/g, "").replace(/[.,!?;:"'()]+$|^[.,!?;:"'()]+/g, "").replace(/\s+/g, " ").trim();
+      if (!word) return;
+      finish(true);                                   // apply this line's pending edit first (this also redraws and closes the editor)
+      const cur = els.autoBlackout.value.split(/[\n,;]+/).map(x => x.trim()).filter(Boolean);
+      if (!cur.some(x => x.toLowerCase() === word.toLowerCase())) cur.push(word);
+      els.autoBlackout.value = cur.join("\n");
+      els.autoBlackout.dispatchEvent(new Event("input", {bubbles: true}));
+    });
     // Recolor: wraps the selection as {#RRGGBB:text}. Re-applying the same color (or ✕) removes it.
     function colorSelection(hex){
       let s = ta.selectionStart, e = ta.selectionEnd, v = ta.value;
@@ -1294,7 +1342,7 @@
   // Everything except the chatlog text itself (and edits) is remembered between visits.
   const SETTINGS_KEY = "providenceChatloggerSettings.v1";
   const SETTING_IDS = ["widthInput","fontSize","fontFamily","outlineWidth","lineSpacing","bgColor","bgOpacity",
-    "highlightMoney","dedupeLines","censorMarker","myCharacter","nameFilterInput","showTimestamps",
+    "highlightMoney","dedupeLines","censorMarker","autoBlackout","myCharacter","nameFilterInput","showTimestamps",
     "catAction","catSay","catLow","catFaction","catPhone","catWhisper","catPerform","catOoc","catSystem","catHeader"];
   function snapshotSettings(){
     const o = {};
