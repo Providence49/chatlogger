@@ -765,7 +765,6 @@
     const marker = (els.censorMarker.value || "").trim() || "+";
     autoCensorRe = buildAutoCensor();
 
-    const dpr = window.devicePixelRatio || 1;
     const measureCtx = document.createElement("canvas").getContext("2d");
 
     // Tokenize every visible line once; wrapping into rows is redone per font size / box width.
@@ -837,7 +836,7 @@
         infoExtra = " ⚠ The text doesn't fit even at the smallest size — make the box bigger or show fewer lines.";
     } else {
       // Browsers cap canvas size (~16k device px tall), so long logs are split into several images.
-      const maxCssHeight = Math.min(8000, Math.floor(16000 / dpr));
+      const maxCssHeight = 8000;
       const rowsPerImage = Math.max(1, Math.floor((maxCssHeight - pad * 2) / lineHeight));
       for (let start = 0; start < rows.length; start += rowsPerImage){
         drawChunk(rows.slice(start, start + rowsPerImage));
@@ -853,7 +852,8 @@
     const blockH = (ov && ov.boxH) ? ov.boxH : pad * 2 + chunkRows.length * lineHeight;
     const canvasW = ov ? ov.iw : width, canvasH = ov ? ov.ih : blockH;
     const ox = ov ? ov.ox : 0, oy = ov ? ov.oy : 0;
-    const d = ov ? 1 : dpr;                              // screenshot mode exports at the screenshot's own resolution
+    const d = 1;                                         // 1 canvas pixel = 1 image pixel, so the saved file is exactly the Width you set
+                                                         // (screenshot mode: exactly the screenshot's size), whatever the screen's scaling is
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(canvasW * d);
     canvas.height = Math.round(canvasH * d);

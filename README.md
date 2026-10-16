@@ -217,7 +217,7 @@ Type your character's name (exactly as it appears in the chat, for example `Jane
 
 | Setting | What it does |
 |---|---|
-| **Width** | How wide the picture is (in pixels) |
+| **Width** | How wide the picture is, in pixels. The picture you download is exactly this wide (set 900 and you get a 900-pixel-wide file). With a screenshot, the file is the screenshot's size instead |
 | **Font size** | How big the text is |
 | **Outline** | Thickness of the black edge around the letters. 0 = no outline |
 | **Line spacing** | The gap between lines (bigger = more air) |
