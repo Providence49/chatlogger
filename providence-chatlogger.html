@@ -149,6 +149,7 @@
         <label class="chk"><input type="checkbox" id="catPerform" checked><span class="swatch" style="background:#FBF724"></span>Performance [Mic]</label>
         <label class="chk"><input type="checkbox" id="catFaction"><span class="swatch" style="background:#2F9E4B"></span>Faction chat</label>
         <label class="chk"><input type="checkbox" id="catOoc"><span class="swatch" style="background:#8a8d97"></span>OOC (( ))</label>
+        <label class="chk"><input type="checkbox" id="catEvent" checked><span class="swatch" style="background:#C94040"></span>Local events</label>
         <label class="chk"><input type="checkbox" id="catSystem"><span class="swatch" style="background:#56D64B"></span>System / server</label>
         <label class="chk"><input type="checkbox" id="catHeader"><span class="swatch" style="background:#666"></span>Session header</label>
         <label class="chk"><input type="checkbox" id="showTimestamps"><span class="swatch" style="background:transparent"></span>Show timestamps</label>
@@ -305,6 +306,9 @@
     const commPrefix = /^\((?:Radio|Car|Phone)\)\s+/i.exec(test);
     if (commPrefix){ isComm = true; test = test.replace(/^\((?:Radio|Car|Phone)\)\s+/i, ""); }
 
+    // Server-run roleplay events ("[LOCAL EVENT] A large convoy of bikers passes through...")
+    if (/^\[LOCAL EVENT\]/i.test(test)) return {time, content, category:"event"};
+
     if (OOC_RE.test(test)){
       // Faction chat looks like OOC but has a rank before the name: (( (64) Patched Member John Smith: ... ))
       // Regular OOC is just "First Last", so 3+ words before the colon means a rank is present.
@@ -366,6 +370,7 @@
     ooc:     "#8a8d97",
     system:  "#56D64B",
     header:  "#8f9aa8",
+    event:   "#C94040", // [LOCAL EVENT] server events — dark-ish red
   };
   const lighten = (hex, amt) => "#" + [1, 3, 5].map(i => Math.min(255, parseInt(hex.slice(i, i + 2), 16) + amt).toString(16).padStart(2, "0")).join("").toUpperCase();
   const HIGHLIGHT_COLOR = "#3896F3"; // "system highlight" — used for $ amounts etc.
@@ -378,7 +383,7 @@
 
   const els = {};
   ["logInput","fileInput","rangeStart","rangeEnd","fullRangeBtn","rangeInfo",
-   "catAction","catSay","catLow","catFaction","catPhone","catWhisper","catPerform","catOoc","catSystem","catHeader","showTimestamps",
+   "catAction","catSay","catLow","catFaction","catPhone","catWhisper","catPerform","catOoc","catSystem","catEvent","catHeader","showTimestamps",
    "widthInput","fontSize","fontFamily","outlineWidth","lineSpacing","bgColor","bgOpacity","bgOpacityVal","bgTransparentBtn","bgSolidBtn","highlightMoney","dedupeLines","censorMarker","myCharacter","ownLightness","autoBlackout","autoBlackoutStatus",
    "visibleCount","copyBtn","copyStatus","overlayFit","nameFilterInput","nameFilterStatus","nameChips","downloadBtn","previewWrap","splitInfo"
   ].forEach(id => els[id] = document.getElementById(id));
@@ -393,7 +398,7 @@
     action: els.catAction, say: els.catSay, low: els.catLow, lower: els.catLow, phone: els.catPhone,
     faction: els.catFaction,
     whisper: els.catWhisper, perform: els.catPerform,
-    ooc: els.catOoc, system: els.catSystem, header: els.catHeader
+    ooc: els.catOoc, system: els.catSystem, event: els.catEvent, header: els.catHeader
   };
 
   function categoryOn(cat){
@@ -411,7 +416,7 @@
   function passesNameFilter(line){
     if (!nameFilter.length) return true;
     const cat = line.category;
-    if (cat === "system" || cat === "header") return true;   // not chat from a character: only their own checkboxes decide
+    if (cat === "system" || cat === "header" || cat === "event") return true;   // not chat from a character: only their own checkboxes decide
     if (cat === "action"){
       const body = (line.actionBody || "").toLowerCase();
       const tag = /\(\(\s*([^()]+?)\s*\)\)\*?\s*$/.exec(body);                  // "... (( Name ))*" says who wrote the emote
@@ -772,7 +777,7 @@
         if (line.category === "phone") color = "#FFFFFF";
         else if (line.category === "say" || line.category === "low" || line.category === "lower") color = lighten(color, selfLighten);
       }
-      return {line, color, atoms: tokenizeLine(prefix + line.content, marker, !["action", "system", "header"].includes(line.category))};
+      return {line, color, atoms: tokenizeLine(prefix + line.content, marker, !["action", "system", "header", "event"].includes(line.category))};
     });
     function layoutFor(fs, w){
       measureCtx.font = fontFor(fs, false);
@@ -979,7 +984,7 @@
 
     // Style bar: select text in the editor, click a button, and the markers are inserted (or removed if already there).
     // The buttons swallow mousedown so the editor keeps focus and doesn't close.
-    const textStyled = line.category !== "action" && line.category !== "system" && line.category !== "header";
+    const textStyled = !["action", "system", "header", "event"].includes(line.category);
     const blackoutMarker = () => (els.censorMarker.value || "").trim() || "+";
     // wrapWord: italics only render when the slashes sit at word edges, so widen the selection to whole words.
     function styleSelection(marker, wrapWord){
@@ -1343,7 +1348,7 @@
   const SETTINGS_KEY = "providenceChatloggerSettings.v1";
   const SETTING_IDS = ["widthInput","fontSize","fontFamily","outlineWidth","lineSpacing","bgColor","bgOpacity",
     "highlightMoney","dedupeLines","censorMarker","autoBlackout","myCharacter","nameFilterInput","showTimestamps",
-    "catAction","catSay","catLow","catFaction","catPhone","catWhisper","catPerform","catOoc","catSystem","catHeader"];
+    "catAction","catSay","catLow","catFaction","catPhone","catWhisper","catPerform","catOoc","catSystem","catEvent","catHeader"];
   function snapshotSettings(){
     const o = {};
     for (const id of SETTING_IDS){ const el = document.getElementById(id); o[id] = el.type === "checkbox" ? el.checked : el.value; }

@@ -98,6 +98,7 @@ Under **3. What to include** there are tick-boxes. Tick one to show that kind of
 | Performance (mic) | `Jane Doe [Microphone]: la la la` | Yellow | Yes |
 | Faction chat | `(( (64) Prospect John Smith: hey ))` | Dark green | No |
 | OOC chat | `(( (60) Jane Doe: brb ))` | Grey | No |
+| Local events | `[LOCAL EVENT] A large convoy of bikers passes through...` | Dark red | Yes |
 | System / server messages | `[INFO] Your player ID is 5.` | Green | No |
 | Session header | `[DATE: 22/AUG/2026 ...]` | Grey | No |
 
