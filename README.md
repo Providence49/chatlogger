@@ -123,12 +123,21 @@ Under the tick-boxes there is a box called **Only show these characters**. Use i
 
 ## 4. Fixing and styling lines directly on the picture
 
+### Removing a line
+
+**Move your mouse over a line on the picture.** It lights up and a small **red ✕** appears on its right. **Click the ✕** and the line is gone.
+
+Removed the wrong one? Click **↺ Restore removed** at the top of the picture to bring back every line you removed.
+
+(You can also click a line and press **🗑 Remove line** in the editor bar, or delete all of its text and press Enter.)
+
+### Changing a line
+
 You can change anything right on the picture. **Click a line.** A little editor opens on top of it.
 
 - Change the words however you like.
 - Press **Enter** (or just click somewhere else) to apply.
 - Press **Esc** to cancel.
-- **Delete all the text in a line and press Enter to remove that line** from the picture.
 
 Above the editor you will see a small bar with buttons. **Select some words** in the editor (drag over them with the mouse, or double-click one word), then click a button:
 
@@ -138,6 +147,7 @@ Above the editor you will see a small bar with buttons. **Select some words** in
 | **I Italic** | Ctrl + I | Makes the selected words italic |
 | **█ Black out** | Ctrl + B | Covers the selected words with a black bar (see [section 5](#5-hiding-names-and-words-blackout)) |
 | **▣ Always** | | Adds the selected words to the "always black out" list, so they are hidden in every line, not just this one |
+| **🗑 Remove line** | | Removes the whole line from the picture |
 | **Colored dots** | | Colors just the selected words (pick one of the 10 dots, or the box at the end for any color) |
 | **✕** | | Removes the color from the selected words |
 
@@ -244,6 +254,14 @@ The tool remembers your settings (size, colors, font, which boxes are ticked, an
 
 - **Download PNG** saves the picture to your Downloads folder. The file is named with the date and time, like `4.9.2026_16.28.44_chatlog.png`.
 - **Copy image** copies the picture so you can paste it straight into Discord, Paint, etc. A message next to the button tells you if it worked. If it doesn't work in your browser, use Download PNG instead.
+
+### Saving only part of the picture
+
+1. Click **✂ Select area** (top left of the picture).
+2. Drag a rectangle over the part you want. Everything outside it goes dark.
+3. Click **Download PNG** or **Copy image**. Only the part inside the rectangle is saved.
+
+To go back to saving the whole picture, click **✕ Clear**. To pick a different part, click **✂ Select area** again and drag a new rectangle. Press **Esc** to cancel while selecting. This also works on a screenshot (for example to cut out just the corner with the chat), and on a long chat that was split into several pictures (you then get just the part you selected, as one file).
 
 **Very long chats:** a picture can only be so tall. If your chat is too long, it is split into several pictures, and a note above the picture tells you. Download PNG then saves them one after another as `…_chatlog_part1.png`, `…_part2.png` and so on (your browser may ask if it is OK to download multiple files, say yes). Copy image can't copy a split chat, so either download, or choose a shorter line range. This doesn't happen when you use a screenshot, because the picture is then the size of the screenshot.
 

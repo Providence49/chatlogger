@@ -92,6 +92,19 @@
     font-family:"Segoe UI", Arial, sans-serif; font-weight:700; line-height:1.32; outline:none;
     box-shadow:0 6px 24px rgba(0,0,0,.6);
   }
+  .lineHover{ position:absolute; pointer-events:none; z-index:1; border-radius:3px;
+    background:rgba(108,182,255,.10); outline:1px solid rgba(108,182,255,.55); }
+  .lineDel{ position:absolute; z-index:2; width:22px; height:22px; padding:0; border-radius:50%;
+    font-size:12px; line-height:18px; font-weight:700; background:#c0392b; color:#fff; border:2px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.6); cursor:pointer; }
+  .lineDel:hover{ background:#e74c3c; filter:none; }
+  .cropLayer{ position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:4; }
+  .cropRect{ position:absolute; box-sizing:border-box; border:2px dashed #fff; outline:1px solid rgba(0,0,0,.6);
+    box-shadow:0 0 0 9999px rgba(0,0,0,.5); }
+  body.cropping #previewWrap canvas{ cursor:crosshair; }
+  .toolbar{ flex-wrap:wrap; row-gap:8px; }
+  .toolbar button{ white-space:nowrap; }
+  #cropInfo{ white-space:nowrap; }
   .chips{ display:flex; flex-wrap:wrap; gap:5px; }
   .chip{ padding:3px 9px; font-size:11.5px; border-radius:999px; }
   .chip.on{ background:var(--accent); color:#0a0f16; border-color:var(--accent); font-weight:600; }
@@ -260,6 +273,10 @@
 
   <div class="right">
     <div class="toolbar">
+      <button id="cropBtn" type="button" title="Drag a rectangle on the picture to export only that part (Esc cancels)">✂ Select area</button>
+      <button id="cropClearBtn" type="button" style="display:none;" title="Go back to exporting the whole picture">✕ Clear</button>
+      <span id="cropInfo" class="hint" style="margin:0;"></span>
+      <button id="restoreLinesBtn" type="button" style="display:none;" title="Bring back every line you removed from the picture">↺ Restore removed</button>
       <div class="spacer"></div>
       <span id="copyStatus" style="font-size:12px; max-width:420px;"></span>
       <button id="copyBtn">Copy image</button>
@@ -385,7 +402,8 @@
   ["logInput","fileInput","rangeStart","rangeEnd","fullRangeBtn","rangeInfo",
    "catAction","catSay","catLow","catFaction","catPhone","catWhisper","catPerform","catOoc","catSystem","catEvent","catHeader","showTimestamps",
    "widthInput","fontSize","fontFamily","outlineWidth","lineSpacing","bgColor","bgOpacity","bgOpacityVal","bgTransparentBtn","bgSolidBtn","highlightMoney","dedupeLines","censorMarker","myCharacter","ownLightness","autoBlackout","autoBlackoutStatus",
-   "visibleCount","copyBtn","copyStatus","overlayFit","nameFilterInput","nameFilterStatus","nameChips","downloadBtn","previewWrap","splitInfo"
+   "visibleCount","copyBtn","copyStatus","overlayFit","nameFilterInput","nameFilterStatus","nameChips","downloadBtn","previewWrap","splitInfo",
+   "cropBtn","cropClearBtn","cropInfo","restoreLinesBtn"
   ].forEach(id => els[id] = document.getElementById(id));
   let canvases = []; // one canvas per exported image (long logs are split)
   let overlay = null;          // uploaded screenshot: {el, w, h, name, url} — chat is drawn on top of it
@@ -393,6 +411,8 @@
   let overlayBox = null;       // size of the chat box on the screenshot: {w, h} in screenshot pixels
   const overlayPos = {x: 24, y: 24};
   let drag = null, suppressClick = false;
+  let cropMode = false;        // true while the user is dragging out an export area
+  let crop = null;             // selected export area: {ci: canvas index, x, y, w, h} in image pixels, or null = whole picture
 
   const catCheckbox = {
     action: els.catAction, say: els.catSay, low: els.catLow, lower: els.catLow, phone: els.catPhone,
@@ -467,6 +487,7 @@
   let lastRawText = "";
   function loadText(text){
     lastRawText = text;
+    crop = null;                                         // a new log = a new picture, so drop any selected export area
     allLines = parseLog(text, els.dedupeLines.checked);
     hiddenIdx = new Set();
     shownIdx = new Set();
@@ -540,6 +561,10 @@
       if (line && isVisible(line)) visCount++;
     }
     els.visibleCount.textContent = `(${visCount} lines will render)`;
+    // "Restore removed lines" only shows when something was removed from the picture
+    const removed = allLines.filter(l => hiddenIdx.has(l.idx)).length;
+    els.restoreLinesBtn.style.display = removed ? "" : "none";
+    els.restoreLinesBtn.textContent = `↺ Restore removed (${removed})`;
   }
 
   // ---------- Rendering ----------
@@ -845,8 +870,9 @@
     }
     saveSettings();
     els.splitInfo.textContent = (overlay ? "Drag the chat to move it, drag its corners to resize. " : "")
-      + "Click any line in the preview to edit it (clear its text to remove it). Wrap text in *asterisks* for an emote, /slashes/ for italics."
+      + "Click any line in the preview to edit it; hover a line and click ✕ to remove it. Wrap text in *asterisks* for an emote, /slashes/ for italics."
       + infoExtra;
+    drawCropOverlay();
 
     function drawChunk(chunkRows, ov){
     const blockH = (ov && ov.boxH) ? ov.boxH : pad * 2 + chunkRows.length * lineHeight;
@@ -943,7 +969,8 @@
   // Edits change the line's text only; its color/category stays as parsed.
   els.previewWrap.addEventListener("click", e => {
     if (suppressClick) return;                         // that "click" was the end of a drag
-    if (e.target.closest(".inlineEdit, .editBar")) return;
+    if (cropMode) return;                              // selecting an export area, not editing
+    if (e.target.closest(".inlineEdit, .editBar, .lineDel")) return;
     const canvas = e.target.closest("canvas");
     if (!canvas || !canvas._meta) return;
     const {pad, lineHeight, fontSize, width, blockW, blockH, offX, offY} = canvas._layout;
@@ -1029,6 +1056,9 @@
     addBtn("✱ Emote", "Color the selected text as an emote (Ctrl+E)", textStyled, () => styleSelection("*", false));
     addBtn("I Italic", "Italicize the selected text (Ctrl+I)", textStyled, () => styleSelection("/", true));
     addBtn("█ Black out", "Black out the selected text (Ctrl+B)", true, () => styleSelection(blackoutMarker(), false));
+    addBtn("🗑 Remove line", "Remove this whole line from the picture (↺ Restore removed lines brings it back)", true, () => {
+      ta.value = ""; finish(true);                    // an empty line = removed
+    });
     // Adds the selected words to the "Always black out" list, so they are hidden everywhere from now on.
     addBtn("▣ Always", "Add the selected words to the 'Always black out' list (hides them in every line)", true, () => {
       let s = ta.selectionStart, e = ta.selectionEnd, v = ta.value;
@@ -1130,6 +1160,114 @@
     ta.addEventListener("blur", ev => { if (ev.relatedTarget && bar.contains(ev.relatedTarget)) return; finish(true); });
   }
 
+  // ---------- Remove lines straight from the picture ----------
+  // Hovering a line highlights it and shows a red ✕ at its right edge; clicking ✕ removes that line.
+  // Removed lines can all be brought back with "Restore removed lines" in the toolbar.
+  function removeLine(idx){
+    hiddenIdx.add(idx);
+    updateCounts();
+    render();
+  }
+  function hideLineHover(){
+    els.previewWrap.querySelectorAll(".lineHover, .lineDel").forEach(n => n.remove());
+  }
+  els.previewWrap.addEventListener("mousemove", e => {
+    if (cropMode || drag || resize || cropDrag || document.querySelector(".inlineEdit")){ hideLineHover(); return; }
+    if (e.target.closest(".lineDel")) return;                       // keep it while the mouse is on the ✕ itself
+    const canvas = e.target.closest("canvas");
+    if (!canvas || !canvas._meta){ hideLineHover(); return; }
+    const {pad, lineHeight, width, blockW, blockH, offX, offY} = canvas._layout;
+    const rect = canvas.getBoundingClientRect();
+    const scale = rect.width / width;
+    const cx = (e.clientX - rect.left) / scale, cy = (e.clientY - rect.top) / scale;
+    if (cx < offX || cx > offX + blockW || cy < offY + pad || cy > offY + blockH){ hideLineHover(); return; }
+    const rowIdx = Math.floor((cy - offY - pad) / lineHeight);
+    const lineIdx = canvas._meta[rowIdx];
+    if (lineIdx == null){ hideLineHover(); return; }                // e.g. the "nothing to show" placeholder
+    const first = canvas._meta.indexOf(lineIdx);
+    const count = canvas._meta.filter(i => i === lineIdx).length;
+    const box = canvas.parentElement;
+    let hl = box.querySelector(".lineHover"), del = box.querySelector(".lineDel");
+    if (!hl){
+      hideLineHover();                                                // only one at a time across split images
+      hl = document.createElement("div"); hl.className = "lineHover"; box.appendChild(hl);
+      del = document.createElement("button"); del.type = "button"; del.className = "lineDel";
+      del.textContent = "✕"; del.title = "Remove this line from the picture";
+      del.addEventListener("click", ev => { ev.stopPropagation(); hideLineHover(); removeLine(+del.dataset.idx); });
+      box.appendChild(del);
+    }
+    const top = (offY + pad + first * lineHeight) * scale, h = count * lineHeight * scale;
+    const left = offX * scale, w = blockW * scale;
+    Object.assign(hl.style, {top: top + "px", height: h + "px", left: left + "px", width: w + "px"});
+    Object.assign(del.style, {top: (top + Math.min(h, lineHeight * scale) / 2 - 11) + "px", left: (left + w - 28) + "px"});
+    del.dataset.idx = lineIdx;
+  });
+  els.previewWrap.addEventListener("mouseleave", hideLineHover);
+  els.restoreLinesBtn.addEventListener("click", () => { hiddenIdx.clear(); updateCounts(); render(); });
+
+  // ---------- Export only part of the picture ----------
+  // "Select area" → drag a rectangle on the picture → Download / Copy save just that rectangle.
+  let cropDrag = null;
+  function updateCropUi(){
+    els.cropBtn.classList.toggle("primary", cropMode);
+    els.cropBtn.textContent = cropMode ? "✂ Selecting…" : "✂ Select area";
+    els.cropClearBtn.style.display = crop ? "" : "none";
+    els.cropInfo.textContent = cropMode ? "Drag over the picture · Esc cancels"
+      : crop ? `Saving only ${crop.w}×${crop.h}` : "";
+    document.body.classList.toggle("cropping", cropMode);
+  }
+  function drawCropOverlay(){
+    els.previewWrap.querySelectorAll(".cropLayer").forEach(n => n.remove());
+    if (crop && !canvases[crop.ci]) crop = null;                     // the picture changed and that part is gone
+    if (crop){
+      const c = canvases[crop.ci];
+      crop.x = Math.max(0, Math.min(crop.x, c.width - 1));          // keep it inside the (possibly re-sized) picture
+      crop.y = Math.max(0, Math.min(crop.y, c.height - 1));
+      crop.w = Math.max(0, Math.min(crop.w, c.width - crop.x));
+      crop.h = Math.max(0, Math.min(crop.h, c.height - crop.y));
+      const layer = document.createElement("div"); layer.className = "cropLayer";
+      const r = document.createElement("div"); r.className = "cropRect";
+      r.style.left = (crop.x / c.width * 100) + "%";  r.style.top = (crop.y / c.height * 100) + "%";
+      r.style.width = (crop.w / c.width * 100) + "%"; r.style.height = (crop.h / c.height * 100) + "%";
+      layer.appendChild(r);
+      c.parentElement.appendChild(layer);
+    }
+    updateCropUi();
+  }
+  const setCropMode = on => { cropMode = on; if (on) hideLineHover(); updateCropUi(); };
+  els.cropBtn.addEventListener("click", () => setCropMode(!cropMode));
+  els.cropClearBtn.addEventListener("click", () => { crop = null; setCropMode(false); drawCropOverlay(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && cropMode && !cropDrag) setCropMode(false); });
+  function canvasPoint(c, e){
+    const rect = c.getBoundingClientRect(), s = rect.width / c.width;
+    return [Math.max(0, Math.min(c.width, (e.clientX - rect.left) / s)), Math.max(0, Math.min(c.height, (e.clientY - rect.top) / s))];
+  }
+  els.previewWrap.addEventListener("pointerdown", e => {
+    if (!cropMode || e.button !== 0) return;
+    const box = e.target.closest(".cwrap"), c = box && box.querySelector("canvas");
+    if (!c) return;
+    e.preventDefault();
+    const [x0, y0] = canvasPoint(c, e);
+    cropDrag = {c, ci: canvases.indexOf(c), x0, y0};
+    crop = {ci: cropDrag.ci, x: Math.round(x0), y: Math.round(y0), w: 0, h: 0};
+    drawCropOverlay();
+  });
+  window.addEventListener("pointermove", e => {
+    if (!cropDrag) return;
+    const [x1, y1] = canvasPoint(cropDrag.c, e);
+    const x = Math.round(Math.min(cropDrag.x0, x1)), y = Math.round(Math.min(cropDrag.y0, y1));
+    crop = {ci: cropDrag.ci, x, y, w: Math.round(Math.max(cropDrag.x0, x1)) - x, h: Math.round(Math.max(cropDrag.y0, y1)) - y};
+    drawCropOverlay();
+  });
+  window.addEventListener("pointerup", () => {
+    if (!cropDrag) return;
+    cropDrag = null;
+    if (!crop || crop.w < 4 || crop.h < 4) crop = null;              // a click without dragging = no selection
+    suppressClick = true; setTimeout(() => { suppressClick = false; }, 0);
+    setCropMode(false);
+    drawCropOverlay();
+  });
+
   // ---------- Export ----------
   function downloadFilename(part, total){
     const d = new Date();
@@ -1140,10 +1278,22 @@
 
   const toBlob = canvas => new Promise(res => canvas.toBlob(res, "image/png"));
 
+  // What Download / Copy save: just the selected area if there is one, otherwise every image.
+  function exportTargets(){
+    if (crop && canvases[crop.ci] && crop.w > 0 && crop.h > 0){
+      const out = document.createElement("canvas");
+      out.width = crop.w; out.height = crop.h;
+      out.getContext("2d").drawImage(canvases[crop.ci], crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+      return [out];
+    }
+    return canvases;
+  }
+
   els.downloadBtn.addEventListener("click", async () => {
-    const total = canvases.length;
+    const targets = exportTargets();
+    const total = targets.length;
     for (let i = 0; i < total; i++){
-      const blob = await toBlob(canvases[i]);
+      const blob = await toBlob(targets[i]);
       if (!blob){ alert("Couldn't export the image. Try a smaller line range or width."); return; }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -1188,20 +1338,21 @@
   }
 
   els.copyBtn.addEventListener("click", async () => {
-    if (canvases.length > 1){
-      setCopyStatus("This log is split into several images — use Download PNG, or narrow the line range.", true);
+    const targets = exportTargets();
+    if (targets.length > 1){
+      setCopyStatus("This log is split into several images — use Download PNG, select an area, or narrow the line range.", true);
       return;
     }
     setCopyStatus("Copying…", false);
     try {
       if (!navigator.clipboard || !window.ClipboardItem) throw new Error("Clipboard API not available in this page");
       // Hand the clipboard a promise so the write starts inside the click (keeps the browser's "user gesture" valid).
-      const pngPromise = toBlob(canvases[0]).then(b => { if (!b) throw new Error("couldn't render the image"); return b; });
+      const pngPromise = toBlob(targets[0]).then(b => { if (!b) throw new Error("couldn't render the image"); return b; });
       await navigator.clipboard.write([new ClipboardItem({ "image/png": pngPromise })]);
       setCopyStatus("Copied to clipboard ✓", false);
     } catch (err1) {
       try {
-        await copyViaSelection(canvases[0]);
+        await copyViaSelection(targets[0]);
         setCopyStatus("Copied to clipboard ✓", false);
       } catch (err2) {
         setCopyStatus(`Couldn't copy (${err1.name}: ${err1.message}). Use Download PNG instead.`, true);
@@ -1280,7 +1431,7 @@
   // Drag the chat block around on the preview (a click without moving still opens the line editor).
   let dragFrame = 0;
   els.previewWrap.addEventListener("pointerdown", e => {
-    if (!overlay || e.button !== 0) return;
+    if (!overlay || e.button !== 0 || cropMode) return;
     const canvas = e.target.closest("canvas");
     if (!canvas || !canvas._layout) return;
     const L = canvas._layout, rect = canvas.getBoundingClientRect(), scale = rect.width / L.width;
@@ -1292,7 +1443,7 @@
   let resize = null;
   els.previewWrap.addEventListener("pointerdown", e => {
     const handle = e.target.closest(".rzHandle");
-    if (!handle || !overlay || !overlayInfo || e.button !== 0) return;
+    if (!handle || !overlay || !overlayInfo || e.button !== 0 || cropMode) return;
     e.preventDefault();
     const canvas = els.previewWrap.querySelector("canvas");
     const scale = canvas.getBoundingClientRect().width / canvas._layout.width;
